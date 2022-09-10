@@ -1,0 +1,18 @@
+udp  APIs:
+	struct udpconn - UDP socket support -  defined in udp.c (runtime/net/udp.c)
+	typedef struct udpconn udpconn_t - udp.h (inc/runtime/udp.h)
+
+	struct netaddr - struct to store network address -  defined in net.h (inc/runtime/net.h)
+
+	int udp_dial(..) - creates a UDP socket between a local and remote address - defined in udp.c
+	
+	int udp_listen(..) - creates a UDP socket listening to a local address
+	
+	int udp_read_from(..) - reads from a UDP socket
+
+	ssize_t udp_read_from(..) - reads from a UDP socket
+	
+	ssize_t udp_write_to(..) - writes to a UDP socket		
+
+	
+
