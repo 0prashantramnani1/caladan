@@ -3,9 +3,12 @@
  */
 
 #include <string.h>
+#include <math.h>
 
 #include <base/hash.h>
 #include <base/kref.h>
+#include <base/log.h>
+#include <runtime/poll.h>
 #include <runtime/smalloc.h>
 #include <runtime/rculist.h>
 #include <runtime/sync.h>
@@ -16,7 +19,8 @@
 #include "waitq.h"
 
 #define UDP_IN_DEFAULT_CAP	512
-#define UDP_OUT_DEFAULT_CAP	2048
+#define UDP_OUT_DEFAULT_CAP	4096
+#define DIV_CEIL(a, b) ((a) / (b) + ((a) % (b) != 0))
 
 unsigned int udp_payload_size;
 
@@ -48,6 +52,7 @@ static int udp_send_raw(struct mbuf *m, size_t len,
 struct udpconn {
 	struct trans_entry	e;
 	bool			shutdown;
+	bool			non_blocking;
 
 	/* ingress support */
 	spinlock_t		inq_lock;
@@ -66,6 +71,7 @@ struct udpconn {
 
 	struct kref		ref;
 	struct flow_registration		flow;
+	struct list_head sock_events;
 };
 
 /* handles ingress packets for UDP sockets */
@@ -93,9 +99,34 @@ static void udp_conn_recv(struct trans_entry *e, struct mbuf *m)
 
 	/* wake up a waiter */
 	th = waitq_signal(&c->inq_wq, &c->inq_lock);
+
+	/** if there was no thread waiting for it,
+	 * and the socket is nonblocking, check for
+	 * registered events and trigger them */
+	if (!th && c->non_blocking) {
+		poll_trigger_t *pt;
+		list_for_each(&c->sock_events, pt, sock_link) {
+			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+		}
+	}
+
 	spin_unlock_np(&c->inq_lock);
 
 	waitq_signal_finish(th);
+}
+
+void udp_conn_check_triggers(udpconn_t *c)
+{
+	spin_lock_np(&c->inq_lock);
+
+	if (!mbufq_empty(&c->inq)) {
+		poll_trigger_t *pt;
+		list_for_each(&c->sock_events, pt, sock_link) {
+			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+		}
+	}
+
+	spin_unlock_np(&c->inq_lock);
 }
 
 /* handles network errors for UDP sockets */
@@ -123,6 +154,7 @@ static const struct trans_ops udp_conn_ops = {
 static void udp_init_conn(udpconn_t *c)
 {
 	c->shutdown = false;
+	c->non_blocking = false;
 
 	/* initialize ingress fields */
 	spin_lock_init(&c->inq_lock);
@@ -140,6 +172,7 @@ static void udp_init_conn(udpconn_t *c)
 	waitq_init(&c->outq_wq);
 
 	kref_init(&c->ref);
+	list_head_init(&c->sock_events);
 }
 
 static void udp_finish_release_conn(struct rcu_head *h)
@@ -307,6 +340,13 @@ ssize_t udp_read_from(udpconn_t *c, void *buf, size_t len,
 
 	spin_lock_np(&c->inq_lock);
 
+	/* if the socket is nonblocking, don't block*/
+	if (mbufq_empty(&c->inq) && !c->inq_err && !c->shutdown &&
+		c->non_blocking) {
+		spin_unlock_np(&c->inq_lock);
+		return 0;
+	}
+
 	/* block until there is an actionable event */
 	while (mbufq_empty(&c->inq) && !c->inq_err && !c->shutdown)
 		waitq_wait(&c->inq_wq, &c->inq_lock);
@@ -384,8 +424,16 @@ ssize_t udp_write_to(udpconn_t *c, const void *buf, size_t len,
 	struct mbuf *m;
 	void *payload;
 
-	if (len > udp_get_payload_size())
+	unsigned int n_pkts;
+	const uint8_t hdrsz = sizeof(struct tx_net_hdr) + sizeof(struct eth_hdr) +
+		sizeof(struct ip_hdr) + sizeof(struct udp_hdr);
+	const uint8_t pkthdrsz = hdrsz - sizeof(struct tx_net_hdr);
+
+	if (len > MAX_BUF_LEN) {
+		log_info("udp_write_to: len = %zu > MAX_BUF_LEN = %d", len, MAX_BUF_LEN);
 		return -EMSGSIZE;
+	}
+
 	if (!raddr) {
 		if (c->e.match == TRANS_MATCH_3TUPLE)
 			return -EDESTADDRREQ;
@@ -412,12 +460,66 @@ ssize_t udp_write_to(udpconn_t *c, const void *buf, size_t len,
 	c->outq_len++;
 	spin_unlock_np(&c->outq_lock);
 
-	m = net_tx_alloc_mbuf();
+
+	int max_content_length = 4000;
+	n_pkts = DIV_CEIL(len, max_content_length);
+//	log_info("sending %d n_pkts ", n_pkts);
+	int count = 0;
+	int remaining = len;
+	for (count = 0; count < n_pkts; count++) {
+		m = net_tx_alloc_mbuf_len(net_get_mtu());
+		if (unlikely(!m))
+	                return -ENOBUFS;
+
+		if (remaining > max_content_length) {
+			payload = mbuf_put(m, max_content_length);
+			remaining -= max_content_length;
+			memcpy(payload, buf + (max_content_length * count), max_content_length);
+
+			m->release = udp_tx_release_mbuf;
+			m->release_data = (unsigned long)c;
+			ret = udp_send_raw(m, max_content_length, c->e.laddr, addr); 
+		} else {
+			payload = mbuf_put(m, remaining);
+			memcpy(payload, buf + (max_content_length * count), remaining);
+			m->release = udp_tx_release_mbuf;
+                        m->release_data = (unsigned long)c;
+                        ret = udp_send_raw(m, remaining, c->e.laddr, addr);
+		}
+
+		if (unlikely(ret)) {
+			log_info("this is happenning? 1");
+			net_tx_release_mbuf(m);
+			return ret;
+        	}
+
+
+	}
+
+
+
+
+
+
+
+#if 0
+	// If I want 1,500 B packets, and len = 10,000 B, then I need to send
+	// N = ceil(10,000 / (1,500 - 42)) packets.
+	// 42 B is the total header size = UDP (8 B) + IP (20 B) + Eth (14 B)
+	n_pkts = DIV_CEIL(len, (net_get_mtu() - pkthdrsz));
+	//log_info("buffer len %d at mtu %d resulted in %d pkts with hdrs %d", len, net_get_mtu(), n_pkts, pkthdrsz);
+	m = net_tx_alloc_mbuf_len(len + n_pkts * hdrsz);
 	if (unlikely(!m))
 		return -ENOBUFS;
 
 	/* write datagram payload */
-	payload = mbuf_put(m, len);
+	/* The buffer will look like (in order from left to right):
+	 * (assuming in total n packets)
+	 * 1. headers for first packet (tx_net_hdr + eth + ip + udp), 60 bytes.
+	 * 2. app data for all packets, maybe 10,000 bytes.
+	 * 3. unallocated space for headers for (n-1) other packets.
+	 */
+	payload = mbuf_put(m, len + (n_pkts - 1) * hdrsz);
 	memcpy(payload, buf, len);
 
 	/* override mbuf release method */
@@ -425,11 +527,12 @@ ssize_t udp_write_to(udpconn_t *c, const void *buf, size_t len,
 	m->release_data = (unsigned long)c;
 
 	ret = udp_send_raw(m, len, c->e.laddr, addr);
+
 	if (unlikely(ret)) {
 		net_tx_release_mbuf(m);
 		return ret;
 	}
-
+#endif 
 	return len;
 }
 
@@ -534,6 +637,21 @@ void udp_close(udpconn_t *c)
 		udp_conn_put(c);
 }
 
+/**
+ * udp_set_nonblocking - set a UDP socket's nonblocking
+ * @c: the socket to set
+ * @block: nonblocking status
+ *
+*/
+void udp_set_nonblocking(udpconn_t *c, bool nonblocking)
+{
+	c->non_blocking = nonblocking;
+}
+
+struct list_head *udp_get_triggers(udpconn_t *c)
+{
+	return &c->sock_events;
+}
 
 /*
  * Parallel API

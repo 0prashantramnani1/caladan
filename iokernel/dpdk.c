@@ -63,6 +63,7 @@ int dpdk_argc;
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.mtu = IOKERNEL_MTU,
+		.split_hdr_size = 0,
 		.offloads = RTE_ETH_RX_OFFLOAD_IPV4_CKSUM,
 		.mq_mode = RTE_ETH_MQ_RX_RSS | RTE_ETH_MQ_RX_RSS_FLAG,
 	},
@@ -257,7 +258,7 @@ int dpdk_init(void)
 int dpdk_late_init(void)
 {
 	/* initialize port */
-	dp.port = 0;
+	dp.port = 2;
 	if (dpdk_port_init(dp.port, dp.rx_mbuf_pool) != 0) {
 		log_err("dpdk: cannot init port %"PRIu8 "\n", dp.port);
 		return -1;

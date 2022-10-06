@@ -120,6 +120,7 @@ static void rx_one_pkt(struct rte_mbuf *buf)
 
 		p = (struct proc *)data;
 		net_hdr = rx_prepend_rx_preamble(buf);
+		//log_info("rx_one_pkt got packet %d", net_hdr->len);
 		if (!rx_send_pkt_to_runtime(p, net_hdr)) {
 			STAT_INC(RX_UNICAST_FAIL, 1);
 			log_debug_ratelimited("rx: failed to send unicast packet to runtime");
