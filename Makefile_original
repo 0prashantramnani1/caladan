@@ -8,8 +8,6 @@ ifneq ($(TCP_RX_STATS),)
 CFLAGS += -DTCP_RX_STATS
 endif
 
-CFLAGS += -DNO_LIBNUMA
-
 # libbase.a - the base library
 base_src = $(wildcard base/*.c)
 base_obj = $(base_src:.c=.o)
@@ -36,37 +34,10 @@ test_src = $(wildcard tests/*.c)
 test_obj = $(test_src:.c=.o)
 test_targets = $(basename $(test_src))
 
-lib := \
-	neper/check_all_options.o \
-	neper/coef.o \
-	neper/common.o \
-	neper/control_plane.o \
-	neper/cpuinfo.o \
-	neper/define_all_flags.o \
-	neper/flags.o \
-	neper/flow.o \
-	neper/hexdump.o \
-	neper/histo.o \
-	neper/logging.o \
-	neper/loop.o \
-	neper/numlist.o \
-	neper/or_die.o \
-	neper/parse.o \
-	neper/percentiles.o \
-	neper/pq.o \
-	neper/print.o \
-	neper/rusage.o \
-	neper/snaps.o \
-	neper/socket.o \
-	neper/stats.o \
-	neper/thread.o \
-	neper/version.o
-
 #neper
-neper_src = $(wildcard neper/tcp_rr_main.c)
-#neper_obj = $(neper_src:.c=.o)
-neper_obj = neper/tcp_rr_main.o neper/tcp_rr.o neper/rr.o $(lib)
-neper_targets = neper/tcp_rr
+neper_src = $(wildcard neper/*.c)
+neper_obj = $(neper_src:.c=.o)
+neper_target = tcp_rr
 
 # pcm lib
 PCM_DEPS = $(ROOT_PATH)/deps/pcm/libPCM.a
@@ -97,7 +68,7 @@ endif
 endif
 
 # must be first
-all: libbase.a libnet.a libruntime.a iokerneld $(test_targets) $(neper_targets)
+all: libbase.a libnet.a libruntime.a iokerneld $(test_targets)
 
 libbase.a: $(base_obj)
 	$(AR) rcs $@ $^
@@ -114,10 +85,6 @@ iokerneld: $(iokernel_obj) libbase.a libnet.a base/base.ld $(PCM_DEPS)
 
 $(test_targets): $(test_obj) libbase.a libruntime.a libnet.a base/base.ld
 	$(LD) $(LDFLAGS) -o $@ $@.o $(RUNTIME_LIBS)
-
-$(neper_targets): $(neper_obj)
-	$(LD) $(LDFLAGS) -o $@ $^ $(RUNTIME_LIBS) -lm -lrt
-
 
 # general build rules for all targets
 src = $(base_src) $(net_src) $(runtime_src) $(iokernel_src) $(test_src)
@@ -151,5 +118,4 @@ submodules:
 .PHONY: clean
 clean:
 	rm -f $(obj) $(dep) libbase.a libnet.a libruntime.a \
-	iokerneld $(test_targets) neper/*.o neper/tcp_rr 
-
+	iokerneld $(test_targets)
