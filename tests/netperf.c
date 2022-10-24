@@ -13,6 +13,7 @@
 #include <runtime/runtime.h>
 #include <runtime/sync.h>
 #include <runtime/tcp.h>
+#include <runtime/poll.h>
 
 #define NETPERF_PORT	8000
 
@@ -115,16 +116,32 @@ static void server_worker(void *arg)
 	unsigned char buf[BUF_SIZE];
 	tcpconn_t *c = (tcpconn_t *)arg;
 	ssize_t ret;
+	tcp_set_nonblocking(c, 1);
 
+	
+	//Creating a waiter for this thread	
+	poll_waiter_t *pw;
+	ret = create_waiter(&pw);
+
+	//Creating a trigger for this socket
+	poll_trigger_t *pt;
+	ret = create_waiter(&pt);
+	
+	//register trigger with a waiter
+	poll_arm(pw, pt, -7);
+	
 	/* echo the data back */
 	while (true) {
-		ret = tcp_read(c, buf, BUF_SIZE);
-		if (ret <= 0)
-			break;
-
-		ret = tcp_write(c, buf, ret);
-		if (ret < 0)
-			break;
+		int waiting = poll_wait(pw);
+		printf("poll_wait data: %d", waiting);
+		if(waiting == -7)
+			ret = tcp_read(c, buf, BUF_SIZE);
+		//if (ret <= 0)
+			//break;
+		
+		if(ret > 0 ) {
+			ret = tcp_write(c, buf, ret);
+		} 
 	}
 
 	tcp_close(c);

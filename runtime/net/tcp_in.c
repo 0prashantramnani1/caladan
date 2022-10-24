@@ -11,6 +11,7 @@
 #include <runtime/smalloc.h>
 #include <net/ip.h>
 #include <net/tcp.h>
+#include <runtime/poll.h>
 
 #include "tcp.h"
 #include "defs.h"
@@ -262,6 +263,13 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	/* should we wake a thread */
 	if (!list_empty(&c->rxq) || (tcphdr->flags & TCP_PUSH) > 0)
 		rx_th = waitq_signal(&c->rx_wq, &c->lock);
+
+	if (!rx_th && c->non_blocking) {
+		poll_trigger_t *pt;
+		list_for_each(&c->sock_events, pt, sock_link) {
+			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+		}
+	}
 
 	/* handle delayed acks */
 	if (++c->acks_delayed_cnt >= 2) {

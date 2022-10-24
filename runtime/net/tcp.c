@@ -245,6 +245,8 @@ tcpconn_t *tcp_conn_alloc(void)
 	spin_lock_init(&c->lock);
 	kref_init(&c->ref);
 	c->err = 0;
+	c->non_blocking = false;
+	list_head_init(&c->sock_events);
 
 	/* ingress fields */
 	c->rx_closed = false;
@@ -359,6 +361,17 @@ void tcp_conn_release_ref(struct kref *r)
 
 	BUG_ON(c->pcb.state != TCP_STATE_CLOSED);
 	tcp_conn_destroy(c);
+}
+
+/**
+ * tcp_set_nonblocking - set a TCP socket's nonblocking
+ * @c: the socket to set
+ * @block: nonblocking status
+ *
+*/
+void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking)
+{
+	c->non_blocking = nonblocking;
 }
 
 /*
@@ -717,6 +730,11 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 
 	*mout = NULL;
 	spin_lock_np(&c->lock);
+
+	if (!c->rx_closed && (c->rx_exclusive || list_empty(&c->rxq)) && c->non_blocking) {
+		spin_unlock_np(&c->lock);
+		return 0;
+	}
 
 	/* block until there is an actionable event */
 	while (!c->rx_closed && (c->rx_exclusive || list_empty(&c->rxq)))
