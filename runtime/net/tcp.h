@@ -90,8 +90,8 @@ struct tcpconn {
 	struct kref		ref;
 	int			err; /* error code for read(), write(), etc. */
 	uint32_t		winmax; /* initial receive window size */
-	bool non_blocking;
-	struct list_head sock_events;
+	bool 			non_blocking;
+	struct list_head 	sock_events;
 
 	/* ingress path */
 	unsigned int		rx_closed:1;
@@ -135,7 +135,6 @@ extern void tcp_conn_fail(tcpconn_t *c, int err);
 extern void tcp_conn_shutdown_rx(tcpconn_t *c);
 extern void tcp_conn_destroy(tcpconn_t *c);
 extern void tcp_timer_update(tcpconn_t *c);
-extern void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking);
 
 /**
  * tcp_conn_get - increments the connection ref count

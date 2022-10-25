@@ -79,7 +79,7 @@ void poll_arm(poll_waiter_t *w, poll_trigger_t *t, unsigned long data)
  */
 void poll_arm_w_sock(poll_waiter_t *w, struct list_head *sock_event_head,
 	poll_trigger_t *t, short event_type, sh_event_callback_fn cb,
-	void* cb_arg, udpconn_t *sock) {
+	void* cb_arg, tcpconn_t *sock, unsigned long data) {
 	if (WARN_ON(t->waiter != NULL))
 		return;
 
@@ -89,6 +89,11 @@ void poll_arm_w_sock(poll_waiter_t *w, struct list_head *sock_event_head,
 	t->cb = cb;
 	t->cb_arg = cb_arg;
 	t->sock = sock;
+	t->data = data;
+	if(sock_event_head == NULL) {
+		printf("poll_wait: Null check 1\n");
+	}
+
 	list_add(sock_event_head, &t->sock_link);
 
 	spin_lock_np(&w->lock);
@@ -126,13 +131,16 @@ void poll_disarm(poll_trigger_t *t)
  */
 unsigned long poll_wait(poll_waiter_t *w)
 {
+	printf("poll wait: \n");
 	thread_t *th = thread_self();
 	poll_trigger_t *t;
 
 	while (true) {
+		printf("poll_wait: in while loop \n");
 		spin_lock_np(&w->lock);
 		t = list_pop(&w->triggered, poll_trigger_t, link);
 		if (t) {
+			printf("poll_wait: trigger triggered\n");
 			spin_unlock_np(&w->lock);
 			return t->data;
 		}
@@ -219,6 +227,7 @@ int poll_cb_once(poll_waiter_t *w)
  */
 void poll_trigger(poll_waiter_t *w, poll_trigger_t *t)
 {
+	printf("poll trigger: \n");
 	thread_t *wth = NULL;
 
 	spin_lock_np(&w->lock);

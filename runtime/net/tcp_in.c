@@ -164,6 +164,7 @@ drain:
 /* fast path for handling ingress packets for TCP connections */
 void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 {
+	printf("in TCP rx CONN \n");
 	tcpconn_t *c = container_of(e, tcpconn_t, e);
 	struct list_head q;
 	thread_t *rx_th = NULL;
@@ -177,7 +178,6 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 
 	list_head_init(&q);
 	snd_nxt = load_acquire(&c->pcb.snd_nxt);
-
 	/* find header offsets */
 	iphdr = mbuf_network_hdr(m, *iphdr);
 	mbuf_mark_transport_offset(m);
@@ -263,14 +263,21 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	/* should we wake a thread */
 	if (!list_empty(&c->rxq) || (tcphdr->flags & TCP_PUSH) > 0)
 		rx_th = waitq_signal(&c->rx_wq, &c->lock);
-
+	if(c->non_blocking) {
+		printf("tcp_rx_conn: c is non blocking\n");
+	}
+	if(rx_th == NULL) {
+		printf("tcp_rx_conn: waiting thread (rx_th) is null \n");
+	}
 	if (!rx_th && c->non_blocking) {
+		printf("tcp_rx_conn: inside POLL loop\n");
 		poll_trigger_t *pt;
 		list_for_each(&c->sock_events, pt, sock_link) {
+			printf("tcp_rx_conn: in list loop \n");
 			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
 		}
 	}
-
+	printf("tcp_rx_conn: done with poll loop\n");
 	/* handle delayed acks */
 	if (++c->acks_delayed_cnt >= 2) {
 		c->ack_delayed = false;

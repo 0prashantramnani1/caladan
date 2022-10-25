@@ -32,3 +32,5 @@ extern ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt);
 extern int tcp_shutdown(tcpconn_t *c, int how);
 extern void tcp_abort(tcpconn_t *c);
 extern void tcp_close(tcpconn_t *c);
+extern void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking);
+extern struct list_head *tcp_get_triggers(tcpconn_t *c);

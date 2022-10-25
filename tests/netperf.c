@@ -9,6 +9,7 @@
 #include <base/stddef.h>
 #include <base/log.h>
 #include <base/time.h>
+#include <base/list.h>
 #include <net/ip.h>
 #include <runtime/runtime.h>
 #include <runtime/sync.h>
@@ -113,6 +114,7 @@ static void do_client(void *arg)
 
 static void server_worker(void *arg)
 {
+	printf("new thread started\n");
 	unsigned char buf[BUF_SIZE];
 	tcpconn_t *c = (tcpconn_t *)arg;
 	ssize_t ret;
@@ -120,20 +122,24 @@ static void server_worker(void *arg)
 
 	
 	//Creating a waiter for this thread	
-	poll_waiter_t *pw;
-	ret = create_waiter(&pw);
+	poll_waiter_t *w;
+	ret = create_waiter(&w);
 
 	//Creating a trigger for this socket
-	poll_trigger_t *pt;
-	ret = create_waiter(&pt);
+	poll_trigger_t *t;
+	ret = create_trigger(&t);
 	
+	struct list_head *h;
+      	h = tcp_get_triggers(c);
+
 	//register trigger with a waiter
-	poll_arm(pw, pt, -7);
+	poll_arm_w_sock(w, h, t, SEV_READ, NULL, NULL, c, -7);
 	
 	/* echo the data back */
 	while (true) {
-		int waiting = poll_wait(pw);
-		printf("poll_wait data: %d", waiting);
+		printf("server_worker: while loop \n");
+		int waiting = poll_wait(w);
+		printf("server_worker: poll_wait data: %d\n", waiting);
 		if(waiting == -7)
 			ret = tcp_read(c, buf, BUF_SIZE);
 		//if (ret <= 0)
@@ -142,6 +148,7 @@ static void server_worker(void *arg)
 		if(ret > 0 ) {
 			ret = tcp_write(c, buf, ret);
 		} 
+		t->triggered = false;	
 	}
 
 	tcp_close(c);
@@ -164,6 +171,7 @@ static void do_server(void *arg)
 
 		ret = tcp_accept(q, &c);
 		BUG_ON(ret);
+		printf("Connection Accepted\n");
 		ret = thread_spawn(server_worker, c);
 		BUG_ON(ret);
 	}

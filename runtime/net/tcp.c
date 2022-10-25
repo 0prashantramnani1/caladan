@@ -374,6 +374,11 @@ void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking)
 	c->non_blocking = nonblocking;
 }
 
+struct list_head *tcp_get_triggers(tcpconn_t *c)
+{
+	return &(c->sock_events);
+}
+
 /*
  * Support for accepting new connections
  */
