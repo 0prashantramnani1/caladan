@@ -155,6 +155,7 @@ unsigned long poll_wait(poll_waiter_t *w)
  */
 int poll_cb_once_nonblock(poll_waiter_t *w)
 {
+	//printf("poll_cv_once_nonblock: \n");
 	poll_trigger_t *t;
 	int ret = 1;
 
@@ -163,23 +164,31 @@ int poll_cb_once_nonblock(poll_waiter_t *w)
 	 * and process all triggered events, and return.
 	 */
 	while (true) {
+		//printf("poll_cv_once_nonblock: while loop\n");
+		//printf("poll_cv_once_nonblock: 1\n");
+
 		spin_lock_np(&w->lock);
+		//printf("poll_cv_once_nonblock: 2\n");
 
 		if (!w->counter) {
 			spin_unlock_np(&w->lock);
 			return -1;
 		}
+		//printf("poll_cv_once_nonblock: 3\n");
 
 		t = list_pop(&w->triggered, poll_trigger_t, link);
+		//printf("poll_cv_once_nonblock: 4\n");
 
 		if (!t) {
 			spin_unlock_np(&w->lock);
 			return ret;
 		}
+		printf("poll_cv_once_nonblock: 4\n");
 
 		t->triggered = false;
 		spin_unlock_np(&w->lock);
-		t->cb(t->cb_arg);
+		//t->cb(t->cb_arg);
+		printf("poll_cv_once_nonblock: 5\n");
 
 		//udp_conn_check_triggers(t->sock);
 		ret = 0;

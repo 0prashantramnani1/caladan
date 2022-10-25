@@ -136,17 +136,32 @@ static void server_worker(void *arg)
 	poll_arm_w_sock(w, h, t, SEV_READ, NULL, NULL, c, -7);
 	
 	/* echo the data back */
+	int read = 0;
+	int write = 0;
 	while (true) {
-		printf("server_worker: while loop \n");
-		int waiting = poll_wait(w);
-		printf("server_worker: poll_wait data: %d\n", waiting);
-		if(waiting == -7)
-			ret = tcp_read(c, buf, BUF_SIZE);
-		//if (ret <= 0)
-			//break;
-		
-		if(ret > 0 ) {
-			ret = tcp_write(c, buf, ret);
+		//printf("server_worker: while loop \n");
+
+		// Need a fix. Won't work if packet from client arrives before
+		// trigger is set. Will be stuck in poll_wait
+		int ret = poll_cb_once_nonblock(w); 
+		//printf("server_worker: poll_wait data: %d\n", ret);
+		if(ret == 0)
+			read = tcp_read(c, buf, BUF_SIZE);
+		if(read > 0) {
+			printf("Server_worker: read %d bytes \n", read);
+		} 
+		//else {
+	//		printf("CLOSING THE CONNECTION\n");
+	//		break;
+	//	}
+
+			
+		if(read > 0 ) {
+			//timer_sleep(5*ONE_SECOND);
+			printf("server_worker: going for tcp_write \n");
+			write = tcp_write(c, buf, read);
+			printf("server_worker: tcp_write done\n");
+			read = 0;
 		} 
 		t->triggered = false;	
 	}

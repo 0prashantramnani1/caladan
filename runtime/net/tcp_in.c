@@ -298,6 +298,8 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	mbuf_list_free(&q);
 	if (do_ack)
 		tcp_tx_ack(c);
+
+	printf("tcp_rx_conn: done\n");
 }
 
 static int tcp_parse_options(tcpconn_t *c, const unsigned char *ptr, int len)
