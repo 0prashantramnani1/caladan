@@ -33,4 +33,7 @@ extern int tcp_shutdown(tcpconn_t *c, int how);
 extern void tcp_abort(tcpconn_t *c);
 extern void tcp_close(tcpconn_t *c);
 extern void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking);
+extern void tcpqueue_set_nonblocking(tcpqueue_t *c, bool nonblocking);
 extern struct list_head *tcp_get_triggers(tcpconn_t *c);
+extern struct list_head *tcpqueue_get_triggers(tcpqueue_t *q);
+

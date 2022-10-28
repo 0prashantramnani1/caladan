@@ -101,6 +101,29 @@ void poll_arm_w_sock(poll_waiter_t *w, struct list_head *sock_event_head,
 	spin_unlock_np(&w->lock);
 }
 
+void poll_arm_w_queue(poll_waiter_t *w, struct list_head *sock_event_head,
+	poll_trigger_t *t, short event_type, sh_event_callback_fn cb,
+	void* cb_arg, tcpqueue_t *queue, unsigned long data) {
+	if (WARN_ON(t->waiter != NULL))
+		return;
+
+	t->waiter = w;
+	t->triggered = false;
+	t->event_type = event_type;
+	t->cb = cb;
+	t->cb_arg = cb_arg;
+	t->queue = queue;
+	t->data = data;
+	if(sock_event_head == NULL) {
+		printf("poll_wait: Null check 1\n");
+	}
+
+	list_add(sock_event_head, &t->sock_link);
+
+	spin_lock_np(&w->lock);
+	w->counter++;
+	spin_unlock_np(&w->lock);
+}
 /**
  * poll_disarm - unregisters a trigger with a waiter
  * @t: the trigger to unregister

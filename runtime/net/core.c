@@ -197,7 +197,9 @@ static void net_rx_one(struct mbuf *m)
 
 	case IPPROTO_UDP:
 	case IPPROTO_TCP:
+		printf("net_rx_one: calling net_rx_trans \n");
 		net_rx_trans(m);
+		printf("net_rx_one: net_rx_trans done\n");
 		break;
 
 	default:

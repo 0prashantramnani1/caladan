@@ -10,6 +10,7 @@
 #include <base/log.h>
 #include <base/time.h>
 #include <base/list.h>
+#include <base/thread.h>
 #include <net/ip.h>
 #include <runtime/runtime.h>
 #include <runtime/sync.h>
@@ -114,7 +115,7 @@ static void do_client(void *arg)
 
 static void server_worker(void *arg)
 {
-	printf("new thread started\n");
+	printf("new server thread started\n");
 	unsigned char buf[BUF_SIZE];
 	tcpconn_t *c = (tcpconn_t *)arg;
 	ssize_t ret;
@@ -138,17 +139,18 @@ static void server_worker(void *arg)
 	/* echo the data back */
 	int read = 0;
 	int write = 0;
+	printf("server_worker: entering while loop\n");
 	while (true) {
-		//printf("server_worker: while loop \n");
-
-		// Need a fix. Won't work if packet from client arrives before
+		// TODO: Need a fix. Won't work if packet from client arrives before
 		// trigger is set. Will be stuck in poll_wait
 		int ret = poll_cb_once_nonblock(w); 
-		//printf("server_worker: poll_wait data: %d\n", ret);
-		if(ret == 0)
+		//printf("server_worker: poll_cb_once data: %d\n", ret);
+		if(ret == 0) {
+			printf("Server_worker: EVent triggered, going into read \n");
 			read = tcp_read(c, buf, BUF_SIZE);
+		}
 		if(read > 0) {
-			printf("Server_worker: read %d bytes \n", read);
+			printf("Server_worker: read %d bytes %d\n", read, thread_id);
 		} 
 		//else {
 	//		printf("CLOSING THE CONNECTION\n");
@@ -179,16 +181,43 @@ static void do_server(void *arg)
 	laddr.port = NETPERF_PORT;
 
 	ret = tcp_listen(laddr, 4096, &q);
+	tcpqueue_set_nonblocking(q, 1);
 	BUG_ON(ret);
+
+        //Creating a waiter for this thread
+        poll_waiter_t *w;
+        ret = create_waiter(&w);
+
+	//Creating a trigger for this socket
+        poll_trigger_t *t;
+        ret = create_trigger(&t);
+
+        struct list_head *h;
+        h = tcpqueue_get_triggers(q);
+
+        //register trigger with a waiter
+        poll_arm_w_queue(w, h, t, SEV_READ, NULL, NULL, q, -7);
 
 	while (true) {
 		tcpconn_t *c;
 
+		ret = poll_cb_once_nonblock(w); 
+		if(ret == 0) {
+			printf("Server_worker: EVent triggered, going into read \n");
+			ret = tcp_accept(q, &c);
+			BUG_ON(ret);
+			printf("Connection Accepted\n");
+			ret = thread_spawn(server_worker, c);
+			BUG_ON(ret);
+		}
+		
+		/*
 		ret = tcp_accept(q, &c);
 		BUG_ON(ret);
 		printf("Connection Accepted\n");
 		ret = thread_spawn(server_worker, c);
 		BUG_ON(ret);
+		*/
 	}
 }
 

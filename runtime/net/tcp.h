@@ -135,6 +135,7 @@ extern void tcp_conn_fail(tcpconn_t *c, int err);
 extern void tcp_conn_shutdown_rx(tcpconn_t *c);
 extern void tcp_conn_destroy(tcpconn_t *c);
 extern void tcp_timer_update(tcpconn_t *c);
+extern struct list_head *tcpqueue_get_triggers(tcpqueue_t *q);
 
 /**
  * tcp_conn_get - increments the connection ref count

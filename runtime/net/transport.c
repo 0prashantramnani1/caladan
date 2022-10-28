@@ -222,10 +222,12 @@ void net_rx_trans(struct mbuf *m)
 		if (iphdr->proto == IPPROTO_TCP)
 			tcp_rx_closed(m);
 		mbuf_free(m);
+		printf("net_rx_trans: returning without call tcp_rxx_conn\n");
 		return;
 	}
-
+	printf("net_rx_trans: returning with call to tcp_rxx_conn\n");
 	e->ops->recv(e, m);
+	printf("net_rx_trans: tcp_rxx_conn done\n");
 	rcu_read_unlock();
 }
 

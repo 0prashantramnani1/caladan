@@ -39,7 +39,9 @@ typedef struct poll_trigger {
 	sh_event_callback_fn	cb;
 	void*			cb_arg;
 	unsigned long		data;
-	tcpconn_t *sock;
+	udpconn_t 		*udpsock;
+	tcpconn_t 		*sock;
+	tcpqueue_t		*queue;
 } poll_trigger_t;
 
 
@@ -53,6 +55,9 @@ extern void poll_arm(poll_waiter_t *w, poll_trigger_t *t, unsigned long data);
 extern void poll_arm_w_sock(poll_waiter_t *w, struct list_head *sock_event_head,
         poll_trigger_t *t, short event_type, sh_event_callback_fn cb,
         void* cb_arg, tcpconn_t *sock, unsigned long data);
+extern void poll_arm_w_queue(poll_waiter_t *w, struct list_head *sock_event_head,
+        poll_trigger_t *t, short event_type, sh_event_callback_fn cb,
+        void* cb_arg, tcpqueue_t *queue, unsigned long data);
 extern void poll_disarm(poll_trigger_t *t);
 extern unsigned long poll_wait(poll_waiter_t *w);
 extern int poll_cb_once(poll_waiter_t *w);

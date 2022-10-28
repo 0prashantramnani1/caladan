@@ -11,6 +11,7 @@
 #include <runtime/thread.h>
 #include <runtime/tcp.h>
 #include <runtime/timer.h>
+#include <runtime/poll.h>
 
 #include "tcp.h"
 
@@ -374,10 +375,12 @@ void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking)
 	c->non_blocking = nonblocking;
 }
 
+
 struct list_head *tcp_get_triggers(tcpconn_t *c)
 {
 	return &(c->sock_events);
 }
+
 
 /*
  * Support for accepting new connections
@@ -390,6 +393,8 @@ struct tcpqueue {
 	struct list_head	conns;
 	int			backlog;
 	bool			shutdown;
+	bool 			non_blocking;
+	struct list_head 	sock_events;
 
 	struct kref ref;
 	struct flow_registration flow;
@@ -397,6 +402,7 @@ struct tcpqueue {
 
 static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 {
+	printf("tcp_queue_recv: \n");
 	tcpqueue_t *q = container_of(e, tcpqueue_t, e);
 	tcpconn_t *c;
 	thread_t *th;
@@ -423,6 +429,20 @@ static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 	spin_lock_np(&q->l);
 	list_add_tail(&q->conns, &c->queue_link);
 	th = waitq_signal(&q->wq, &q->l);
+	
+	if(th == NULL) {
+		printf("tcp_queue_recv: waiting thread is null\n");
+	}	
+	// If no thread is waiting on accept()
+	if (!th && q->non_blocking) {
+		poll_trigger_t *pt;
+		list_for_each(&q->sock_events, pt, sock_link) {
+			printf("tcp_queue_recv: in poll loop\n");
+			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+		}
+	}
+	printf("tcp_queue_recv: done with poll loop\n");
+
 	spin_unlock_np(&q->l);
 	waitq_signal_finish(th);
 
@@ -447,6 +467,15 @@ static void tcp_queue_release_ref(struct kref *ref)
 	rcu_free(&q->e.rcu, tcp_queue_release);
 }
 
+struct list_head *tcpqueue_get_triggers(tcpqueue_t *q)
+{
+        return &(q->sock_events);
+}
+
+void tcpqueue_set_nonblocking(tcpqueue_t *q, bool nonblocking)
+{
+	q->non_blocking = nonblocking;
+}
 /**
  * tcp_listen - creates a TCP listening queue for a local address
  * @laddr: the local address to listen on
@@ -491,6 +520,9 @@ int tcp_listen(struct netaddr laddr, int backlog, tcpqueue_t **q_out)
 	q->flow.e = &q->e;
 	q->flow.ref = &q->ref;
 	q->flow.release = tcp_queue_release_ref;
+	q->non_blocking = false;
+	list_head_init(&q->sock_events);
+
 
 	register_flow(&q->flow);
 
@@ -510,6 +542,12 @@ int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 	tcpconn_t *c;
 
 	spin_lock_np(&q->l);
+
+	if (list_empty(&q->conns) && !q->shutdown && q->non_blocking) {
+		spin_unlock_np(&q->l);
+		return 0;
+	}
+
 	while (list_empty(&q->conns) && !q->shutdown)
 		waitq_wait(&q->wq, &q->l);
 

@@ -184,6 +184,7 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	tcphdr = mbuf_pull_hdr_or_null(m, *tcphdr);
 	if (unlikely(!tcphdr)) {
 		mbuf_free(m);
+		printf("tcp_rx_conn: return 1\n");
 		return;
 	}
 
@@ -194,11 +195,13 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	hdr_len = tcphdr->off * sizeof(uint32_t);
 	if (unlikely(hdr_len < sizeof(struct tcp_hdr))) {
 		mbuf_free(m);
+		printf("tcp_rx_conn: return 2\n");
 		return;
 	}
 	len = ntoh16(iphdr->len) - sizeof(*iphdr) - hdr_len;
 	if (unlikely(len > mbuf_length(m) || len > c->pcb.rcv_mss)) {
 		mbuf_free(m);
+		printf("tcp_rx_conn: return 3\n");
 		return;
 	}
 
@@ -231,8 +234,10 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	/* Does the ack land outside snd_nxt? */
 	slow_path |= wraps_gt(ack, snd_nxt);
 
-	if (unlikely(slow_path))
+	if (unlikely(slow_path)) {
+		printf("tcp_rx_conn: return 4\n");
 		return __tcp_rx_conn(c, m, ack, snd_nxt, win, optp, optlen);
+	}
 
 	STAT(RX_TCP_IN_ORDER)++;
 
