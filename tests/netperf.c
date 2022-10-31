@@ -144,20 +144,14 @@ static void server_worker(void *arg)
 		// TODO: Need a fix. Won't work if packet from client arrives before
 		// trigger is set. Will be stuck in poll_wait
 		int ret = poll_cb_once_nonblock(w); 
-		//printf("server_worker: poll_cb_once data: %d\n", ret);
+
 		if(ret == 0) {
-			//printf("Server_worker: EVent triggered, going into read \n");
 			read = tcp_read(c, buf, BUF_SIZE);
 		}
-		if(read > 0) {
-			//printf("Server_worker: read %d bytes %d\n", read, thread_id);
-		} 
 			
 		if(read > 0 ) {
 			//timer_sleep(5*ONE_SECOND);
-			//printf("server_worker: going for tcp_write \n");
 			write = tcp_write(c, buf, read);
-			//printf("server_worker: tcp_write done\n");
 			read = 0;
 		} 
 		t->triggered = false;	
@@ -166,14 +160,14 @@ static void server_worker(void *arg)
 	tcp_close(c);
 }
 
-static void do_server(void *arg)
+static void do_server(int id)
 {
 	struct netaddr laddr;
 	tcpqueue_t *q;
 	int ret;
 
 	laddr.ip = 0;
-	laddr.port = NETPERF_PORT;
+	laddr.port = NETPERF_PORT + id;
 
 	ret = tcp_listen(laddr, 4096, &q);
 	tcpqueue_set_nonblocking(q, 1);
@@ -199,6 +193,7 @@ static void do_server(void *arg)
 	accept_arg->c = &c;
 	
 	sh_event_callback_fn cb = &tcp_accept_poll;
+
         //register trigger with a waiter
         poll_arm_w_queue(w, h, t, SEV_READ, cb, accept_arg, q, -7);
 
@@ -210,9 +205,11 @@ static void do_server(void *arg)
 				// Won't work if the server gets 2 connections 
 				// together. 
 				printf("Connection Accepted\n");
+				printf("thread_id: %d\n", id);
 				tcpconn_t *c_tmp = c;
 				//ret = thread_spawn(server_worker, c_tmp);
 				
+				//continue;		
 				tcp_set_nonblocking(c_tmp, 1);
 				poll_trigger_t *t_tmp;
 				ret = create_trigger(&t_tmp);
@@ -228,8 +225,9 @@ static void do_server(void *arg)
 				read_arg->len = BUF_SIZE;
 
 				sh_event_callback_fn cb = &tcp_read_poll;
+
 				//register trigger with a waiter
-				poll_arm_w_sock(w, h, t_tmp, SEV_READ, tcp_read_poll, read_arg, c_tmp, -7);
+				poll_arm_w_sock(w, h, t_tmp, SEV_READ, cb, read_arg, c_tmp, -7);
 
 			}
 			//ret = tcp_accept(q, &c);
@@ -243,6 +241,14 @@ static void do_server(void *arg)
 		BUG_ON(ret);
 		*/
 	}
+}
+
+void start_server_threads(void *arg) {
+	for(int i=0;i<nworkers;i++) {
+		int ret = thread_spawn(do_server, i);
+	}
+
+	while(true);
 }
 
 static int str_to_ip(const char *str, uint32_t *addr)
@@ -283,7 +289,8 @@ int main(int argc, char *argv[])
 	if (!strcmp(argv[2], "CLIENT")) {
 		fn = do_client;
 	} else if (!strcmp(argv[2], "SERVER")) {
-		fn = do_server;
+		//fn = do_server;
+		fn = start_server_threads;
 	} else {
 		printf("invalid mode '%s'\n", argv[2]);
 		return -EINVAL;
