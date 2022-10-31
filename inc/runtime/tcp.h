@@ -13,6 +13,20 @@ typedef struct tcpqueue tcpqueue_t;
 struct tcpconn;
 typedef struct tcpconn tcpconn_t;
 
+struct tcparg {
+        tcpqueue_t *q;
+        tcpconn_t **c;
+};
+typedef struct tcparg tcparg_t;
+
+struct tcp_read_arg {
+        tcpconn_t	**c;
+	void		*buf;
+	size_t		len;
+};
+typedef struct tcp_read_arg tcp_read_arg_t;
+
+
 extern int tcp_dial(struct netaddr laddr, struct netaddr raddr,
 		    tcpconn_t **c_out);
 extern int tcp_dial_affinity(uint32_t affinity, struct netaddr raddr,
@@ -21,11 +35,13 @@ extern int tcp_dial_conn_affinity(tcpconn_t *in, struct netaddr raddr,
 		    tcpconn_t **c_out);
 extern int tcp_listen(struct netaddr laddr, int backlog, tcpqueue_t **q_out);
 extern int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out);
+extern int tcp_accept_poll(tcparg_t *arg);
 extern void tcp_qshutdown(tcpqueue_t *q);
 extern void tcp_qclose(tcpqueue_t *q);
 extern struct netaddr tcp_local_addr(tcpconn_t *c);
 extern struct netaddr tcp_remote_addr(tcpconn_t *c);
 extern ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len);
+extern ssize_t tcp_read_poll(tcp_read_arg_t *arg);
 extern ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len);
 extern ssize_t tcp_readv(tcpconn_t *c, const struct iovec *iov, int iovcnt);
 extern ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt);

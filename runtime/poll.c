@@ -91,7 +91,7 @@ void poll_arm_w_sock(poll_waiter_t *w, struct list_head *sock_event_head,
 	t->sock = sock;
 	t->data = data;
 	if(sock_event_head == NULL) {
-		printf("poll_wait: Null check 1\n");
+		//printf("poll_wait: Null check 1\n");
 	}
 
 	list_add(sock_event_head, &t->sock_link);
@@ -115,7 +115,7 @@ void poll_arm_w_queue(poll_waiter_t *w, struct list_head *sock_event_head,
 	t->queue = queue;
 	t->data = data;
 	if(sock_event_head == NULL) {
-		printf("poll_wait: Null check 1\n");
+		//printf("poll_wait: Null check 1\n");
 	}
 
 	list_add(sock_event_head, &t->sock_link);
@@ -154,16 +154,16 @@ void poll_disarm(poll_trigger_t *t)
  */
 unsigned long poll_wait(poll_waiter_t *w)
 {
-	printf("poll wait: \n");
+	//printf("poll wait: \n");
 	thread_t *th = thread_self();
 	poll_trigger_t *t;
 
 	while (true) {
-		printf("poll_wait: in while loop \n");
+		//printf("poll_wait: in while loop \n");
 		spin_lock_np(&w->lock);
 		t = list_pop(&w->triggered, poll_trigger_t, link);
 		if (t) {
-			printf("poll_wait: trigger triggered\n");
+			//printf("poll_wait: trigger triggered\n");
 			spin_unlock_np(&w->lock);
 			return t->data;
 		}
@@ -206,12 +206,12 @@ int poll_cb_once_nonblock(poll_waiter_t *w)
 			spin_unlock_np(&w->lock);
 			return ret;
 		}
-		printf("poll_cv_once_nonblock: 4\n");
+		//printf("poll_cv_once_nonblock: 4\n");
 
 		t->triggered = false;
 		spin_unlock_np(&w->lock);
 		//t->cb(t->cb_arg);
-		printf("poll_cv_once_nonblock: 5\n");
+		//printf("poll_cv_once_nonblock: 5\n");
 
 		//udp_conn_check_triggers(t->sock);
 		ret = 0;
@@ -227,12 +227,13 @@ int poll_cb_once(poll_waiter_t *w)
 {
 	bool processed_events = false;
 	poll_trigger_t *t;
+	int ret = 1;
 
 	while (true) {
 		spin_lock_np(&w->lock);
 		if (!w->counter) {
 			spin_unlock_np(&w->lock);
-			return 1;
+			return -1;
 		}
 
 		t = list_pop(&w->triggered, poll_trigger_t, link);
@@ -240,15 +241,18 @@ int poll_cb_once(poll_waiter_t *w)
 		if (!t) {
 			spin_unlock_np(&w->lock);
 			if (processed_events) return 0;
-			return 1;
+			return ret;
 		}
 
+		//printf("poll_cb_once: trigger is not null\n");
 		t->triggered = false;
 		spin_unlock_np(&w->lock);
+		//printf("About to trigger accept_epoll\n");
 		t->cb(t->cb_arg);
 		processed_events = true;
 
 		//udp_conn_check_triggers(t->sock);
+		ret = 0;
 	}
 }
 
@@ -259,7 +263,7 @@ int poll_cb_once(poll_waiter_t *w)
  */
 void poll_trigger(poll_waiter_t *w, poll_trigger_t *t)
 {
-	printf("poll trigger: \n");
+	//printf("poll trigger: \n");
 	thread_t *wth = NULL;
 
 	spin_lock_np(&w->lock);
@@ -268,6 +272,7 @@ void poll_trigger(poll_waiter_t *w, poll_trigger_t *t)
 		return;
 	}
 	t->triggered = true;
+	//printf("poll trigger: triggered\n");
 	list_add(&w->triggered, &t->link);
 	if (w->waiting_th) {
 		wth = w->waiting_th;

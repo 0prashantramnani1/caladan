@@ -164,7 +164,7 @@ drain:
 /* fast path for handling ingress packets for TCP connections */
 void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 {
-	printf("in TCP rx CONN \n");
+	//printf("in TCP rx CONN \n");
 	tcpconn_t *c = container_of(e, tcpconn_t, e);
 	struct list_head q;
 	thread_t *rx_th = NULL;
@@ -184,7 +184,7 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	tcphdr = mbuf_pull_hdr_or_null(m, *tcphdr);
 	if (unlikely(!tcphdr)) {
 		mbuf_free(m);
-		printf("tcp_rx_conn: return 1\n");
+	//	printf("tcp_rx_conn: return 1\n");
 		return;
 	}
 
@@ -195,13 +195,13 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	hdr_len = tcphdr->off * sizeof(uint32_t);
 	if (unlikely(hdr_len < sizeof(struct tcp_hdr))) {
 		mbuf_free(m);
-		printf("tcp_rx_conn: return 2\n");
+	//	printf("tcp_rx_conn: return 2\n");
 		return;
 	}
 	len = ntoh16(iphdr->len) - sizeof(*iphdr) - hdr_len;
 	if (unlikely(len > mbuf_length(m) || len > c->pcb.rcv_mss)) {
 		mbuf_free(m);
-		printf("tcp_rx_conn: return 3\n");
+	//	printf("tcp_rx_conn: return 3\n");
 		return;
 	}
 
@@ -235,7 +235,7 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	slow_path |= wraps_gt(ack, snd_nxt);
 
 	if (unlikely(slow_path)) {
-		printf("tcp_rx_conn: return 4\n");
+	//	printf("tcp_rx_conn: return 4\n");
 		return __tcp_rx_conn(c, m, ack, snd_nxt, win, optp, optlen);
 	}
 
@@ -269,20 +269,20 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	if (!list_empty(&c->rxq) || (tcphdr->flags & TCP_PUSH) > 0)
 		rx_th = waitq_signal(&c->rx_wq, &c->lock);
 	if(c->non_blocking) {
-		printf("tcp_rx_conn: c is non blocking\n");
+	//	printf("tcp_rx_conn: c is non blocking\n");
 	}
 	if(rx_th == NULL) {
-		printf("tcp_rx_conn: waiting thread (rx_th) is null \n");
+	//	printf("tcp_rx_conn: waiting thread (rx_th) is null \n");
 	}
 	if (!rx_th && c->non_blocking) {
-		printf("tcp_rx_conn: inside POLL loop\n");
+	//	printf("tcp_rx_conn: inside POLL loop\n");
 		poll_trigger_t *pt;
 		list_for_each(&c->sock_events, pt, sock_link) {
-			printf("tcp_rx_conn: in list loop \n");
+	//		printf("tcp_rx_conn: in list loop \n");
 			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
 		}
 	}
-	printf("tcp_rx_conn: done with poll loop\n");
+	//printf("tcp_rx_conn: done with poll loop\n");
 	/* handle delayed acks */
 	if (++c->acks_delayed_cnt >= 2) {
 		c->ack_delayed = false;
@@ -304,7 +304,7 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	if (do_ack)
 		tcp_tx_ack(c);
 
-	printf("tcp_rx_conn: done\n");
+	//printf("tcp_rx_conn: done\n");
 }
 
 static int tcp_parse_options(tcpconn_t *c, const unsigned char *ptr, int len)

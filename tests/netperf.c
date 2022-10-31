@@ -146,23 +146,18 @@ static void server_worker(void *arg)
 		int ret = poll_cb_once_nonblock(w); 
 		//printf("server_worker: poll_cb_once data: %d\n", ret);
 		if(ret == 0) {
-			printf("Server_worker: EVent triggered, going into read \n");
+			//printf("Server_worker: EVent triggered, going into read \n");
 			read = tcp_read(c, buf, BUF_SIZE);
 		}
 		if(read > 0) {
-			printf("Server_worker: read %d bytes %d\n", read, thread_id);
+			//printf("Server_worker: read %d bytes %d\n", read, thread_id);
 		} 
-		//else {
-	//		printf("CLOSING THE CONNECTION\n");
-	//		break;
-	//	}
-
 			
 		if(read > 0 ) {
 			//timer_sleep(5*ONE_SECOND);
-			printf("server_worker: going for tcp_write \n");
+			//printf("server_worker: going for tcp_write \n");
 			write = tcp_write(c, buf, read);
-			printf("server_worker: tcp_write done\n");
+			//printf("server_worker: tcp_write done\n");
 			read = 0;
 		} 
 		t->triggered = false;	
@@ -195,20 +190,49 @@ static void do_server(void *arg)
         struct list_head *h;
         h = tcpqueue_get_triggers(q);
 
+	// Passing tcp_accept as a call back function	
+	tcpconn_t *c;
+	tcparg_t *accept_arg;
+
+	accept_arg = (tcparg_t *)malloc(sizeof(tcparg_t)); 
+	accept_arg->q = q;
+	accept_arg->c = &c;
+	
+	sh_event_callback_fn cb = &tcp_accept_poll;
         //register trigger with a waiter
-        poll_arm_w_queue(w, h, t, SEV_READ, NULL, NULL, q, -7);
+        poll_arm_w_queue(w, h, t, SEV_READ, cb, accept_arg, q, -7);
 
 	while (true) {
-		tcpconn_t *c;
-
-		ret = poll_cb_once_nonblock(w); 
+		c = NULL;
+		ret = poll_cb_once(w); 
 		if(ret == 0) {
-			printf("Server_worker: EVent triggered, going into read \n");
-			ret = tcp_accept(q, &c);
-			BUG_ON(ret);
-			printf("Connection Accepted\n");
-			ret = thread_spawn(server_worker, c);
-			BUG_ON(ret);
+			if(c != NULL) {
+				// Won't work if the server gets 2 connections 
+				// together. 
+				printf("Connection Accepted\n");
+				tcpconn_t *c_tmp = c;
+				//ret = thread_spawn(server_worker, c_tmp);
+				
+				tcp_set_nonblocking(c_tmp, 1);
+				poll_trigger_t *t_tmp;
+				ret = create_trigger(&t_tmp);
+	
+      				h = tcp_get_triggers(c_tmp);
+				
+				unsigned char buf[BUF_SIZE];
+
+				tcp_read_arg_t *read_arg;
+				read_arg = (tcp_read_arg_t *)malloc(sizeof(tcp_read_arg_t)); 
+				read_arg->c = c_tmp;
+				read_arg->buf = buf;
+				read_arg->len = BUF_SIZE;
+
+				sh_event_callback_fn cb = &tcp_read_poll;
+				//register trigger with a waiter
+				poll_arm_w_sock(w, h, t_tmp, SEV_READ, tcp_read_poll, read_arg, c_tmp, -7);
+
+			}
+			//ret = tcp_accept(q, &c);
 		}
 		
 		/*

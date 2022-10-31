@@ -399,6 +399,12 @@ struct tcpqueue {
 	struct kref ref;
 	struct flow_registration flow;
 };
+/*
+struct tcparg {
+	tcpqueue_t *q;
+	tcpconn_t **c;
+};
+*/	
 
 static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 {
@@ -438,7 +444,10 @@ static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 		poll_trigger_t *pt;
 		list_for_each(&q->sock_events, pt, sock_link) {
 			printf("tcp_queue_recv: in poll loop\n");
-			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+			if ((pt->event_type & SEV_READ) && !pt->triggered) {
+				printf("tcp_queue_recv: going into poll_trigger\n");
+			       	poll_trigger(pt->waiter, pt);
+			}
 		}
 	}
 	printf("tcp_queue_recv: done with poll loop\n");
@@ -567,6 +576,43 @@ int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 	return 0;
 }
 
+/**
+ * tcp_accept_poll - accepts a TCP connection + epoll
+ * @arg: pointer to the argument structure 
+ *
+ * Returns 0 if successful, otherwise -EPIPE if the listen queue was closed.
+ */
+int tcp_accept_poll(tcparg_t *arg)
+{
+	printf("tcp_accept_epoll: \n");
+	tcpconn_t *c;
+	tcpqueue_t* q = arg->q;
+
+	spin_lock_np(&q->l);
+
+	if (list_empty(&q->conns) && !q->shutdown && q->non_blocking) {
+		spin_unlock_np(&q->l);
+		return 0;
+	}
+
+	while (list_empty(&q->conns) && !q->shutdown)
+		waitq_wait(&q->wq, &q->l);
+
+	/* was the queue drained and shutdown? */
+	if (list_empty(&q->conns) && q->shutdown) {
+		spin_unlock_np(&q->l);
+		return -EPIPE;
+	}
+
+	/* otherwise a new connection is available */
+	q->backlog++;
+	c = list_pop(&q->conns, tcpconn_t, queue_link);
+	assert(c != NULL);
+	spin_unlock_np(&q->l);
+
+	*arg->c = c;
+	return 0;
+}
 static void __tcp_qshutdown(tcpqueue_t *q)
 {
 	/* mark the listen queue as shutdown */
@@ -888,6 +934,62 @@ ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len)
 
 	return ret;
 }
+
+/**
+ * tcp_read_poll - reads data from a TCP connection + epoll
+ * @arg: pointer to the structure argument
+ *
+ * Returns the number of bytes read, 0 if the connection is closed, or < 0
+ * if an error occurred.
+ */
+ssize_t tcp_read_poll(tcp_read_arg_t *arg)
+{
+	tcpconn_t *c = arg->c;
+	char *pos = arg->buf;
+	char *buf = arg->buf;
+	size_t len = arg->len;
+
+	struct list_head q;
+	
+	struct mbuf *m;
+	ssize_t ret;
+
+	list_head_init(&q);
+
+	/* wait for data to become available */
+	ret = tcp_read_wait(c, len, &q, &m);
+
+	/* check if connection was closed */
+	if (ret <= 0)
+		return ret;
+
+	/* copy the data from the buffers */
+	while (true) {
+		struct mbuf *cur = list_pop(&q, struct mbuf, link);
+		if (!cur)
+			break;
+
+		memcpy(pos, mbuf_data(cur), mbuf_length(cur));
+		pos += mbuf_length(cur);
+		mbuf_free(cur);
+	}
+
+	/* we may have to consume only part of a buffer */
+	if (m) {
+		size_t cpylen = len - (uintptr_t)pos + (uintptr_t)buf;
+		memcpy(pos, mbuf_pull(m, cpylen), cpylen);
+		m->seg_seq += cpylen;
+	}
+
+	/* wakeup any pending readers */
+	tcp_read_finish(c, m);
+	printf("tcp_read_epoll: %d\n", buf[0]);
+	if(ret > 0) {
+		int tmp = tcp_write(c, buf, ret);
+	}
+	return ret;
+}
+
 
 static size_t iov_len(const struct iovec *iov, int iovcnt)
 {
