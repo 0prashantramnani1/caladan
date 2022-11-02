@@ -130,6 +130,72 @@ static void do_client(void *arg)
         log_info("measured %f reqs/s", (double)reqs / seconds);
 }
 
+static void do_client_poll(int id)
+{
+        int i;
+        uint64_t reqs = 0;
+
+        tcpconn_t **c;
+        c = (tcpconn_t **)malloc(10*sizeof(tcpconn_t *));
+        struct netaddr laddr;
+        ssize_t ret;
+        int budget = depth;
+
+        /* local IP + ephemeral port */
+        laddr.ip = 0;
+        laddr.port = 0;
+
+
+        poll_waiter_t *w;
+        ret = create_waiter(&w);
+
+	for(int j=0;j<10;j++) { // Connections per thread
+		raddr.port = NETPERF_PORT + id;
+		ret = tcp_dial(laddr, raddr, &c[j]);
+		timer_sleep(ONE_SECOND);
+		tcp_set_nonblocking(c[j], 1);
+
+		//Creating a trigger for this socket
+		poll_trigger_t *t;
+		ret = create_trigger(&t);
+
+		struct list_head *h;
+		h = tcp_get_triggers(c[j]);
+
+		unsigned char buf[BUF_SIZE];
+		memset(buf, 0xAA, payload_len);
+
+		tcp_read_arg_t *read_arg;
+		read_arg = (tcp_read_arg_t *)malloc(sizeof(tcp_read_arg_t)); 
+		read_arg->c = c[j];
+		read_arg->buf = buf;
+		read_arg->len = BUF_SIZE;
+
+		sh_event_callback_fn cb = &tcp_read_poll;
+
+		//register trigger with a waiter
+		poll_arm_w_sock(w, h, t, SEV_READ, cb, read_arg, c[j], -7);
+
+		ret = tcp_write(c[j], buf, payload_len);
+		if (ret != payload_len) {
+			printf("error in writing \n");
+			log_err("tcp_write() failed, ret = %ld", ret);
+			break;
+		}
+
+	}
+
+        stop_us = microtime() + seconds * ONE_SECOND;
+        while (microtime() < stop_us) {
+		poll_cb_once(w);
+	}
+	for(int i=0;i<10;i++) {
+        	tcp_abort(c[i]);
+        	tcp_close(c[i]);
+        	log_info("close port %hu", tcp_local_addr(c[i]).port);
+	}
+}
+
 static void server_worker(void *arg)
 {
 	printf("new server thread started\n");
@@ -268,6 +334,14 @@ void start_server_threads(void *arg) {
 	while(true);
 }
 
+void start_client_threads(void *arg) {
+	for(int i=0;i<nworkers;i++) {
+		int ret = thread_spawn(do_client_poll, i);
+	}
+
+	while(true);
+}
+
 static int str_to_ip(const char *str, uint32_t *addr)
 {
 	uint8_t a, b, c, d;
@@ -304,7 +378,8 @@ int main(int argc, char *argv[])
 	}
 
 	if (!strcmp(argv[2], "CLIENT")) {
-		fn = do_client;
+		//fn = do_client_poll;
+		fn = start_client_threads;
 	} else if (!strcmp(argv[2], "SERVER")) {
 		//fn = do_server;
 		fn = start_server_threads;
