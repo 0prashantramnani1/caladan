@@ -945,8 +945,8 @@ ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len)
 ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 {
 	tcpconn_t *c = arg->c;
-	char *pos = arg->buf;
-	char *buf = arg->buf;
+	unsigned char *buf = arg->buf;
+	char *pos = buf;
 	size_t len = arg->len;
 
 	struct list_head q;
@@ -983,7 +983,7 @@ ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 
 	/* wakeup any pending readers */
 	tcp_read_finish(c, m);
-	printf("tcp_read_epoll: %d\n", buf[0]);
+	//printf("tcp_read_epoll: %d\n", buf[0]);
 	if(ret > 0) {
 		int tmp = tcp_write(c, buf, ret);
 	}

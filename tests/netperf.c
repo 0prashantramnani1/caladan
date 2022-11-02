@@ -30,87 +30,104 @@ static int depth;
 #define BUF_SIZE	32768
 
 struct client_rr_args {
-	waitgroup_t *wg;
-	uint64_t reqs;
+        waitgroup_t *wg;
+        uint64_t reqs;
+        int id;
 };
 
 static void client_worker(void *arg)
 {
-	unsigned char buf[BUF_SIZE];
-	struct client_rr_args *args = (struct client_rr_args *)arg;
-	tcpconn_t *c;
-	struct netaddr laddr;
-	ssize_t ret;
-	int budget = depth;
+        unsigned char buf[BUF_SIZE];
+        struct client_rr_args *args = (struct client_rr_args *)arg;
+        tcpconn_t *c;
+        struct netaddr laddr;
+        ssize_t ret;
+        int budget = depth;
 
-	/* local IP + ephemeral port */
-	laddr.ip = 0;
-	laddr.port = 0;
+        /* local IP + ephemeral port */
+        laddr.ip = 0;
+        laddr.port = 0;
 
-	memset(buf, 0xAB, payload_len);
+        memset(buf, 0xAA, payload_len);
+        raddr.port = NETPERF_PORT + args->id;
+        ret = tcp_dial(laddr, raddr, &c);
+        timer_sleep(1*ONE_SECOND);
+        if (ret) {
+                log_err("tcp_dial() failed, ret = %ld", ret);
+                goto done;
+        }
 
-	ret = tcp_dial(laddr, raddr, &c);
-	if (ret) {
-		log_err("tcp_dial() failed, ret = %ld", ret);
-		goto done;
-	}
+        while (microtime() < stop_us) {
+                unsigned char read_buf[BUF_SIZE];
+                while (budget) {
+                        ret = tcp_write(c, buf, payload_len);
+                        if (ret != payload_len) {
+                                printf("error in writing \n");
+                                log_err("tcp_write() failed, ret = %ld", ret);
+                                break;
+                        }
+                        budget--;
+                }
+                ret = tcp_read(c, read_buf, payload_len * depth);
 
-	while (microtime() < stop_us) {
-		while (budget) {
-			ret = tcp_write(c, buf, payload_len);
-			if (ret != payload_len) {
-				log_err("tcp_write() failed, ret = %ld", ret);
-				break;
-			}
-			budget--;
-		}
+                if(read_buf[0] != buf[0]) {
+                        printf("client_worker: read and write buf are not same\n");
+                }
+                //else {
+                //      printf("client_worker: they don't match\n");
+                //}
 
-		ret = tcp_read(c, buf, payload_len * depth);
-		if (ret <= 0 || ret % payload_len != 0) {
-			log_err("tcp_read() failed, ret = %ld", ret);
-			break;
-		}
+                //printf("client_worker: %d\n", read_buf[0]);
+                if (ret <= 0 || ret % payload_len != 0) {
+                        log_err("tcp_read() failed, ret = %ld", ret);
+                        break;
+                }
 
-		budget += ret / payload_len;
-		args->reqs += ret / payload_len;
-	}
+                budget += ret / payload_len;
+                args->reqs += ret / payload_len;
+        }
 
-	log_info("close port %hu", tcp_local_addr(c).port);
-	tcp_abort(c);
-	tcp_close(c);
+        log_info("close port %hu", tcp_local_addr(c).port);
+        tcp_abort(c);
+        tcp_close(c);
 done:
-	waitgroup_done(args->wg);
+        waitgroup_done(args->wg);
 }
 
 static void do_client(void *arg)
 {
-	waitgroup_t wg;
-	struct client_rr_args *arg_tbl;
-	int i, ret;
-	uint64_t reqs = 0;
+        waitgroup_t wg;
+        struct client_rr_args *arg_tbl;
+        int i, ret;
+        uint64_t reqs = 0;
 
-	log_info("client-mode TCP: %d workers, %ld bytes, %d seconds %d depth",
-		 nworkers, payload_len, seconds, depth);
+        log_info("client-mode TCP: %d workers, %ld bytes, %d seconds %d depth",
+                 nworkers, payload_len, seconds, depth);
 
-	arg_tbl = calloc(nworkers, sizeof(*arg_tbl));
-	BUG_ON(!arg_tbl);
+        arg_tbl = calloc(nworkers*10, sizeof(*arg_tbl));
+        BUG_ON(!arg_tbl);
 
-	waitgroup_init(&wg);
-	waitgroup_add(&wg, nworkers);
-	stop_us = microtime() + seconds * ONE_SECOND;
-	for (i = 0; i < nworkers; i++) {
-		arg_tbl[i].wg = &wg;
-		arg_tbl[i].reqs = 0;
-		ret = thread_spawn(client_worker, &arg_tbl[i]);
-		BUG_ON(ret);
-	}
+        waitgroup_init(&wg);
+        waitgroup_add(&wg, nworkers*10);
+        stop_us = microtime() + seconds * ONE_SECOND;
+        for (i = 0; i < nworkers; i++) {
+                for(int j=0;j<10;j++) {
+                        int k = i*10 + j;
+                        arg_tbl[k].wg = &wg;
+                        arg_tbl[k].reqs = 0;
+                        arg_tbl[k].id = i;
+                        ret = thread_spawn(client_worker, &arg_tbl[k]);
+                        timer_sleep(1*ONE_SECOND);
+                        BUG_ON(ret);
+                }
+        }
 
-	waitgroup_wait(&wg);
+        waitgroup_wait(&wg);
 
-	for (i = 0; i < nworkers; i++)
-		reqs += arg_tbl[i].reqs;
+        for (i = 0; i < nworkers*10; i++)
+                reqs += arg_tbl[i].reqs;
 
-	log_info("measured %f reqs/s", (double)reqs / seconds);
+        log_info("measured %f reqs/s", (double)reqs / seconds);
 }
 
 static void server_worker(void *arg)
