@@ -372,6 +372,7 @@ void tcp_conn_release_ref(struct kref *r)
 */
 void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking)
 {
+	c->reqs = 0;
 	c->non_blocking = nonblocking;
 }
 
@@ -935,6 +936,9 @@ ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len)
 	return ret;
 }
 
+long long int tcp_get_reqs(tcpconn_t *c) {
+	return c->reqs;
+}
 /**
  * tcp_read_poll - reads data from a TCP connection + epoll
  * @arg: pointer to the structure argument
@@ -984,6 +988,7 @@ ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 	/* wakeup any pending readers */
 	tcp_read_finish(c, m);
 	//printf("tcp_read_epoll: %d\n", buf[0]);
+	c->reqs++;
 	if(ret > 0) {
 		int tmp = tcp_write(c, buf, ret);
 	}

@@ -53,3 +53,5 @@ extern void tcpqueue_set_nonblocking(tcpqueue_t *c, bool nonblocking);
 extern struct list_head *tcp_get_triggers(tcpconn_t *c);
 extern struct list_head *tcpqueue_get_triggers(tcpqueue_t *q);
 
+extern long long int tcp_get_reqs(tcpconn_t *c);
+
