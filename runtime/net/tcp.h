@@ -92,6 +92,7 @@ struct tcpconn {
 	uint32_t		winmax; /* initial receive window size */
 	bool 			non_blocking;
 	struct list_head 	sock_events;
+	long long int           reqs;
 
 	/* ingress path */
 	unsigned int		rx_closed:1;
