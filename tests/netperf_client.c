@@ -29,6 +29,7 @@ static size_t payload_len;
 static int depth;
 long long int reqs_threads[1000];
 
+
 #define BUF_SIZE        32768
 
 struct client_rr_args {
@@ -47,7 +48,7 @@ static void do_client_poll(int id)
 
         tcpconn_t **c;
 	//TODO: Removing this "10" hard coding
-        c = (tcpconn_t **)malloc(10*sizeof(tcpconn_t *));
+        c = (tcpconn_t **)malloc(nflows*sizeof(tcpconn_t *));
         struct netaddr laddr;
         ssize_t ret;
         int budget = depth;
@@ -59,10 +60,13 @@ static void do_client_poll(int id)
         poll_waiter_t *w;
         ret = create_waiter(&w);
 
-        for(int j=0;j<10;j++) { // Connections per thread
+        for(int j=0;j<nflows;j++) { // Connections per thread
                 raddr.port = NETPERF_PORT + id;
 
                 ret = tcp_dial(laddr, raddr, &c[j]);
+		if(ret) {
+			printf("Error in dialing\n");
+		}
 
 		//TODO: Ask prof about this timer
 		// Required to synn up connections
@@ -107,15 +111,15 @@ static void do_client_poll(int id)
                 poll_cb_once(w);
         }
 	
-        for(int i=0;i<10;i++) {
-		reqs_threads[id] = tcp_get_reqs(c[i]);
+        for(int i=0;i<nflows;i++) {
+		reqs_threads[id] += tcp_get_reqs(c[i]);
                 tcp_abort(c[i]);
                 tcp_close(c[i]);
 		
-		waitgroup_done(&wg);
 
                 log_info("close port %hu", tcp_local_addr(c[i]).port);
         }
+	waitgroup_done(&wg);
 }
 void start_client_threads(void *args) {
 	waitgroup_init(&wg);
@@ -133,7 +137,8 @@ void start_client_threads(void *args) {
 	for(int i=0;i<nthreads;i++) {
 		total_reqs += reqs_threads[i];
 	}
-	printf("Total reqs processed: %lld", total_reqs);
+	printf("Total reqs processed: %lld\n", total_reqs);
+	printf("Through Put: %lld\n", total_reqs/seconds);
 }
 
 static int str_to_ip(const char *str, uint32_t *addr)
@@ -164,6 +169,7 @@ int main(int argc, char *argv[])
         long tmp;
         uint32_t addr;
         thread_fn_t fn;
+	memset(reqs_threads, 0, 1000*sizeof(long long int));
 
         if (argc < 8) {
                 printf("%s: [config_file_path] [nflows] [nthreads] [ip] [time] "
