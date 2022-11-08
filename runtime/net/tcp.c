@@ -303,24 +303,32 @@ tcpconn_t *tcp_conn_alloc(void)
 int tcp_conn_attach(tcpconn_t *c, struct netaddr laddr, struct netaddr raddr)
 {
 	int ret;
-
+	printf("tcp_conn_attch: \n");
 	if (laddr.ip == 0)
 		 laddr.ip = netcfg.addr;
 	else if (laddr.ip != netcfg.addr)
 		return -EINVAL;
 
 	trans_init_5tuple(&c->e, IPPROTO_TCP, &tcp_conn_ops, laddr, raddr);
-	if (laddr.port == 0)
+	printf("tcp_conn_attch: 1\n");
+	if (laddr.port == 0) {
+		printf("tcp_conn_attch: 1.2\n");
 		ret = trans_table_add_with_ephemeral_port(&c->e);
-	else
+	}
+	else {
+		printf("tcp_conn_attch: 1.3\n");
 		ret = trans_table_add(&c->e);
+	}
 	if (ret)
 		return ret;
 
 	spin_lock_np(&tcp_lock);
+	printf("tcp_conn_attch: 2\n");
 	list_add_tail(&tcp_conns, &c->global_link);
+	printf("tcp_conn_attch: 3\n");
 	spin_unlock_np(&tcp_lock);
 
+	printf("tcp_conn_attch: 4\n");
 	c->attach_ts = microtime();
 
 	return 0;
@@ -413,30 +421,35 @@ static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 	tcpqueue_t *q = container_of(e, tcpqueue_t, e);
 	tcpconn_t *c;
 	thread_t *th;
-
+	printf("tcp_queue_recv: 1\n");
 	/* make sure the connection queue isn't full */
 	spin_lock_np(&q->l);
 	if (unlikely(q->backlog == 0 || q->shutdown)) {
+		printf("tcp_queue_recv: unlikely\n");
 		spin_unlock_np(&q->l);
 		goto done;
 	}
+	printf("tcp_queue_recv: 2\n");
 	q->backlog--;
 	spin_unlock_np(&q->l);
-
+	printf("tcp_queue_recv: 2.5\n");
 	/* create a new connection */
 	c = tcp_rx_listener(e->laddr, m);
+	printf("tcp_queue_recv: 3\n");
 	if (!c) {
+		printf("tcp_queue_recv: creating new connection failed\n");
 		spin_lock_np(&q->l);
 		q->backlog++;
 		spin_unlock_np(&q->l);
 		goto done;
 	}
 
+	printf("tcp_queue_recv: 4\n");
 	/* wake a thread to accept the connection */
 	spin_lock_np(&q->l);
 	list_add_tail(&q->conns, &c->queue_link);
 	th = waitq_signal(&q->wq, &q->l);
-	
+	printf("tcp_queue_recv: thread should be null\n");
 	if(th == NULL) {
 		printf("tcp_queue_recv: waiting thread is null\n");
 	}	
@@ -823,7 +836,7 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 
 	if (!c->rx_closed && (c->rx_exclusive || list_empty(&c->rxq)) && c->non_blocking) {
 		spin_unlock_np(&c->lock);
-		return 0;
+		return -11;
 	}
 
 	/* block until there is an actionable event */
@@ -832,6 +845,8 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 
 	/* is the socket closed? */
 	if (c->rx_closed) {
+		tcp_close(c);
+		printf("CONNECTION CLOSEd\n");
 		spin_unlock_np(&c->lock);
 		return -c->err;
 	}
@@ -843,6 +858,7 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 			break;
 
 		if (unlikely((m->flags & TCP_FIN) > 0)) {
+			printf("Unlikely \n");
 			tcp_conn_shutdown_rx(c);
 			if (mbuf_length(m) == 0)
 				break;
@@ -963,9 +979,15 @@ ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 	/* wait for data to become available */
 	ret = tcp_read_wait(c, len, &q, &m);
 
-	/* check if connection was closed */
-	if (ret <= 0)
+	if(ret == -11) 
 		return ret;
+
+	/* check if connection was closed */
+	if (ret <= 0) {
+		tcp_close(c);
+		printf("CLosing connection port: %d\n", c->e.laddr.port);
+		return ret;
+	}
 
 	/* copy the data from the buffers */
 	while (true) {
@@ -987,7 +1009,6 @@ ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 
 	/* wakeup any pending readers */
 	tcp_read_finish(c, m);
-	//printf("tcp_read_epoll: %d\n", buf[0]);
 	c->reqs++;
 	if(ret > 0) {
 		int tmp = tcp_write(c, buf, ret);
@@ -1254,6 +1275,7 @@ static void tcp_retransmit(void *arg)
  */
 void tcp_conn_fail(tcpconn_t *c, int err)
 {
+	printf("tcp_conn_fail: \n");
 	assert_spin_lock_held(&c->lock);
 
 	c->err = err;
@@ -1290,6 +1312,7 @@ void tcp_conn_fail(tcpconn_t *c, int err)
  */
 void tcp_conn_shutdown_rx(tcpconn_t *c)
 {
+	printf("Shutting down rx connection\n");
 	assert_spin_lock_held(&c->lock);
 
 	if (c->rx_closed)
@@ -1336,6 +1359,7 @@ static int tcp_conn_shutdown_tx(tcpconn_t *c)
  */
 int tcp_shutdown(tcpconn_t *c, int how)
 {
+	printf("tcp_shutdown: \n");
 	bool tx, rx;
 	int ret;
 
@@ -1397,6 +1421,7 @@ void tcp_abort(tcpconn_t *c)
  */
 void tcp_close(tcpconn_t *c)
 {
+	printf("tcp_close :\n");
 	int ret;
 
 	spin_lock_np(&c->lock);
