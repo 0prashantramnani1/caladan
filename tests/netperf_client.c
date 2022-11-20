@@ -17,7 +17,7 @@
 #include <runtime/tcp.h>
 #include <runtime/poll.h>
 
-#define NETPERF_PORT    8000
+#define NETPERF_PORT    8013
 
 /* experiment parameters */
 static struct netaddr raddr;

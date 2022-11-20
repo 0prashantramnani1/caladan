@@ -124,6 +124,56 @@ void poll_arm_w_queue(poll_waiter_t *w, struct list_head *sock_event_head,
 	w->counter++;
 	spin_unlock_np(&w->lock);
 }
+
+// TODO: Make it general
+
+void poll_arm_w_sock_neper(poll_waiter_t *w, struct list_head *sock_event_head,
+	poll_trigger_t *t, short event_type, sh_event_callback_fn cb,
+	void* cb_arg, tcpconn_t *sock, void* data) {
+	if (WARN_ON(t->waiter != NULL))
+		return;
+
+	t->waiter = w;
+	t->triggered = false;
+	t->event_type = event_type;
+	t->cb = cb;
+	t->cb_arg = cb_arg;
+	t->sock = sock;
+	t->data_poll = data;
+	if(sock_event_head == NULL) {
+		//printf("poll_wait: Null check 1\n");
+	}
+
+	list_add(sock_event_head, &t->sock_link);
+
+	spin_lock_np(&w->lock);
+	w->counter++;
+	spin_unlock_np(&w->lock);
+}
+
+void poll_arm_w_queue_neper(poll_waiter_t *w, struct list_head *sock_event_head,
+	poll_trigger_t *t, short event_type, sh_event_callback_fn cb,
+	void* cb_arg, tcpqueue_t *queue, void* data) {
+	if (WARN_ON(t->waiter != NULL))
+		return;
+
+	t->waiter = w;
+	t->triggered = false;
+	t->event_type = event_type;
+	t->cb = cb;
+	t->cb_arg = cb_arg;
+	t->queue = queue;
+	t->data_poll = data;
+	if(sock_event_head == NULL) {
+		//printf("poll_wait: Null check 1\n");
+	}
+
+	list_add(sock_event_head, &t->sock_link);
+
+	spin_lock_np(&w->lock);
+	w->counter++;
+	spin_unlock_np(&w->lock);
+}
 /**
  * poll_disarm - unregisters a trigger with a waiter
  * @t: the trigger to unregister
@@ -236,12 +286,65 @@ int poll_cb_once(poll_waiter_t *w)
 
 		t->triggered = false;
 		spin_unlock_np(&w->lock);
-		t->cb(t->cb_arg);
+		if(t->cb != NULL)
+			t->cb(t->cb_arg);
+		tcparg_t *arg = (tcparg_t *)t->cb_arg;
+		// printf("poll_cb_once: called tcp_accep_poll: raddr_port:%d\n", tcp_get_raddr_port(*arg->c));
 		processed_events = true;
 
+		if(t->queue != NULL) {
+			tcpqueue_check_triggers(t->queue);
+			return 0;
+		}
 		ret = 0;
+		// return ret;
 	}
 }
+
+/**
+ * poll_cb_once - blocks till an event is triggered and loops over all
+ * triggered events and calls their callbacks
+ * @w: the waiter to wait on
+ */
+int poll_return_triggers(poll_waiter_t *w, poll_trigger_t *events, int max_events)
+{
+	bool processed_events = false;
+	poll_trigger_t *t;
+	int ret = 1;
+	int nevents = 0;
+
+	while (true) {
+		spin_lock_np(&w->lock);
+		if (!w->counter) {
+			spin_unlock_np(&w->lock);
+			return -1;
+		}
+
+		t = list_pop(&w->triggered, poll_trigger_t, link);
+
+		if (!t) {
+			spin_unlock_np(&w->lock);
+			if (processed_events) return 0;
+			return nevents;
+		}
+
+		t->triggered = false;
+		spin_unlock_np(&w->lock);
+
+		processed_events = true;
+
+		if(t->queue != NULL) {
+			// Hack to make tcpqueue level triggered
+			tcpqueue_check_triggers(t->queue);
+		}
+		
+		events[nevents++] = *t;
+		if(nevents >= max_events) {
+			return nevents;
+		}
+	}
+}
+
 
 /**
  * poll_trigger - fires a trigger
@@ -259,6 +362,10 @@ void poll_trigger(poll_waiter_t *w, poll_trigger_t *t)
 		return;
 	}
 	t->triggered = true;
+	// if(t->sock != NULL) {
+	// 	int raddr_port = tcp_get_raddr_port(t->sock);
+	// 	printf("Raddr_port: %d\n", raddr_port);
+	// } 
 	//printf("poll trigger: triggered\n");
 	list_add(&w->triggered, &t->link);
 	if (w->waiting_th) {

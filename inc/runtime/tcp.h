@@ -49,9 +49,11 @@ extern int tcp_shutdown(tcpconn_t *c, int how);
 extern void tcp_abort(tcpconn_t *c);
 extern void tcp_close(tcpconn_t *c);
 extern void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking);
+extern int tcp_get_raddr_port(tcpconn_t *c);
 extern void tcpqueue_set_nonblocking(tcpqueue_t *c, bool nonblocking);
 extern struct list_head *tcp_get_triggers(tcpconn_t *c);
 extern struct list_head *tcpqueue_get_triggers(tcpqueue_t *q);
+extern void tcpqueue_check_triggers(tcpqueue_t *q);
 
 extern long long int tcp_get_reqs(tcpconn_t *c);
 

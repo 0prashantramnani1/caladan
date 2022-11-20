@@ -17,7 +17,7 @@
 #include <runtime/tcp.h>
 #include <runtime/poll.h>
 
-#define NETPERF_PORT	8001
+#define NETPERF_PORT	8013
 
 /* experiment parameters */
 static struct netaddr raddr;
@@ -64,18 +64,18 @@ static void do_server(int id)
 	sh_event_callback_fn cb = &tcp_accept_poll;
 
         //register trigger with a waiter
-        poll_arm_w_queue(w, h, t, SEV_READ, cb, accept_arg, q, -7);
+	poll_arm_w_queue(w, h, t, SEV_READ, cb, accept_arg, q, -7);
 
 
 	while (true) {
 		c = NULL;
 		ret = poll_cb_once(w); 
 		if(ret == 0) {
+			// printf("RET IS NOT 0\n");
 			if(c != NULL) {
 				// Won't work if the server gets 2 connections 
 				// together. 
-				printf("Connection Accepted\n");
-				printf("thread_id: %d\n", id);
+				printf("Connection Accepted - thread_id: %d - raddr_port: %d \n", id, tcp_get_raddr_port(c));
 				tcpconn_t *c_tmp = c;
 				//ret = thread_spawn(server_worker, c_tmp);
 				
@@ -84,7 +84,7 @@ static void do_server(int id)
 				poll_trigger_t *t_tmp;
 				ret = create_trigger(&t_tmp);
 	
-      				h = tcp_get_triggers(c_tmp);
+				h = tcp_get_triggers(c_tmp);
 				
 				unsigned char buf[BUF_SIZE];
 

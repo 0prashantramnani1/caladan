@@ -390,6 +390,11 @@ struct list_head *tcp_get_triggers(tcpconn_t *c)
 	return &(c->sock_events);
 }
 
+int tcp_get_raddr_port(tcpconn_t *c)
+{
+	return c->e.raddr.port;
+}
+
 
 /*
  * Support for accepting new connections
@@ -495,6 +500,22 @@ struct list_head *tcpqueue_get_triggers(tcpqueue_t *q)
         return &(q->sock_events);
 }
 
+void tcpqueue_check_triggers(tcpqueue_t *q)
+{
+	spin_lock_np(&q->l);
+
+	if (!list_empty(&q->conns)) {
+		poll_trigger_t *pt;
+		list_for_each(&q->sock_events, pt, sock_link) {
+			if ((pt->event_type & SEV_READ) && !pt->triggered) {
+			       	poll_trigger(pt->waiter, pt);
+			}
+		}
+	}
+
+	spin_unlock_np(&q->l);
+}
+
 void tcpqueue_set_nonblocking(tcpqueue_t *q, bool nonblocking)
 {
 	q->non_blocking = nonblocking;
@@ -563,29 +584,32 @@ int tcp_listen(struct netaddr laddr, int backlog, tcpqueue_t **q_out)
 int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 {
 	tcpconn_t *c;
-
+	printf("2.2.0!!!!!!!!\n");
+	if(q == NULL) {
+		printf("NULLLLL");
+	}
 	spin_lock_np(&q->l);
-
+	printf("2.2.1!!!!!!!!\n");
 	if (list_empty(&q->conns) && !q->shutdown && q->non_blocking) {
 		spin_unlock_np(&q->l);
 		return 0;
 	}
-
+	printf("2.2.2!!!!!!!!\n");
 	while (list_empty(&q->conns) && !q->shutdown)
 		waitq_wait(&q->wq, &q->l);
-
+	printf("2.2.3!!!!!!!!\n");
 	/* was the queue drained and shutdown? */
 	if (list_empty(&q->conns) && q->shutdown) {
 		spin_unlock_np(&q->l);
 		return -EPIPE;
 	}
-
+	printf("2.2.4!!!!!!!!\n");
 	/* otherwise a new connection is available */
 	q->backlog++;
 	c = list_pop(&q->conns, tcpconn_t, queue_link);
 	assert(c != NULL);
 	spin_unlock_np(&q->l);
-
+	printf("2.2.5!!!!!!!!\n");
 	*c_out = c;
 	return 0;
 }
@@ -605,6 +629,10 @@ int tcp_accept_poll(tcparg_t *arg)
 	spin_lock_np(&q->l);
 
 	if (list_empty(&q->conns) && !q->shutdown && q->non_blocking) {
+		printf("tcp_accep_epoll: returning 1\n");
+		if(list_empty(&q->conns)) {
+			printf("tcp_accept_epoll: returning as q->conns is empty\n");
+		}
 		spin_unlock_np(&q->l);
 		return 0;
 	}
@@ -614,6 +642,7 @@ int tcp_accept_poll(tcparg_t *arg)
 
 	/* was the queue drained and shutdown? */
 	if (list_empty(&q->conns) && q->shutdown) {
+		printf("tcp_accep_epoll: returning 2\n");
 		spin_unlock_np(&q->l);
 		return -EPIPE;
 	}
@@ -623,6 +652,7 @@ int tcp_accept_poll(tcparg_t *arg)
 	c = list_pop(&q->conns, tcpconn_t, queue_link);
 	assert(c != NULL);
 	spin_unlock_np(&q->l);
+	printf("tcp_accep_epoll: conenction found: raddr_port %d\n", tcp_get_raddr_port(c));
 
 	*arg->c = c;
 	return 0;

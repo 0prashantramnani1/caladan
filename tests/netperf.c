@@ -297,7 +297,7 @@ static void do_server(int id)
 				poll_trigger_t *t_tmp;
 				ret = create_trigger(&t_tmp);
 	
-      				h = tcp_get_triggers(c_tmp);
+				h = tcp_get_triggers(c_tmp);
 				
 				unsigned char buf[BUF_SIZE];
 

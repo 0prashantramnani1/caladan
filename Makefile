@@ -65,8 +65,8 @@ lib := \
 #neper
 neper_src = $(wildcard neper/tcp_rr_main.c)
 #neper_obj = $(neper_src:.c=.o)
-neper_obj = neper/tcp_rr_main.o neper/tcp_rr.o neper/rr.o $(lib)
-neper_targets = neper/tcp_rr
+neper_obj = neper/tcp_stream_main.o neper/tcp_stream.o neper/stream.o $(lib)
+neper_targets = neper/tcp_stream
 
 # pcm lib
 PCM_DEPS = $(ROOT_PATH)/deps/pcm/libPCM.a
