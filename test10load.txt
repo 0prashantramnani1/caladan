@@ -1,0 +1,33 @@
+Threads: 1 ------ Time: 10 ------ Depth: 1
+
+
+
+payload_size 10
+
+num_flows 1     Throughput: 23101.2
+-----------------------
+num_flows 11     Throughput: 726983.4
+-----------------------
+num_flows 21     Throughput: 1672824.6
+-----------------------
+num_flows 31     Throughput: 1835655.4
+-----------------------
+num_flows 41     Throughput: 2027105.0
+-----------------------
+SEG FAULT!!!!!!!!!!
+SEG FAULT!!!!!!!!!!
+num_flows 51     Throughput: 2034205.8
+-----------------------
+SEG FAULT!!!!!!!!!!
+num_flows 61     Throughput: 2025564.2
+-----------------------
+SEG FAULT!!!!!!!!!!
+SEG FAULT!!!!!!!!!!
+SEG FAULT!!!!!!!!!!
+num_flows 71     Throughput: 1996193.4
+-----------------------
+SEG FAULT!!!!!!!!!!
+num_flows 81     Throughput: 1952176.6
+-----------------------
+SEG FAULT!!!!!!!!!!
+num_flows 91     Throughput: 1937233.6

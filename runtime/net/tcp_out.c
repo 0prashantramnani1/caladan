@@ -281,6 +281,7 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 	ssize_t ret = 0;
 	size_t seglen;
 	uint32_t mss = c->pcb.snd_mss;
+	//printf("mss: %d\n", mss);
 
 	assert(c->pcb.state >= TCP_STATE_ESTABLISHED);
 	assert((c->tx_exclusive == true) || spin_lock_held(&c->lock));

@@ -70,7 +70,7 @@ static void do_client_poll(int id)
 
 		//TODO: Ask prof about this timer
 		// Required to synn up connections
-                //timer_sleep(ONE_SECOND);
+                timer_sleep(ONE_SECOND);
 
                 tcp_set_nonblocking(c[j], 1);
 
@@ -96,28 +96,14 @@ static void do_client_poll(int id)
                 //register trigger with a waiter
                 poll_arm_w_sock(w, h, t, SEV_READ, cb, read_arg, c[j], -7);
 
-                //ret = tcp_write(c[j], buf, payload_len);
+                ret = tcp_write(c[j], buf, payload_len);
 
-                //if (ret != payload_len) {
-                //        log_err("tcp_write() failed, ret = %ld", ret);
-                //        break;
-                //}
-
-        }
-
-        //timer_sleep(20*ONE_SECOND);
-        unsigned char buf_tmp[BUF_SIZE];
-        memset(buf_tmp, 0xAA, payload_len);
-
-	for(int i=0;i<nflows;i++) {
-        	int ret  = tcp_write(c[i], buf_tmp, payload_len);
                 if (ret != payload_len) {
                         log_err("tcp_write() failed, ret = %ld", ret);
                         break;
                 }
-	}
 
-        timer_sleep(10*ONE_SECOND);
+        }
 
         stop_us = microtime() + seconds * ONE_SECOND;
 
@@ -127,7 +113,7 @@ static void do_client_poll(int id)
 	
         for(int i=0;i<nflows;i++) {
 		reqs_threads[id] += tcp_get_reqs(c[i]);
-		printf("req_threads: %d\n", tcp_get_reqs(c[i]));
+		printf("c[i] reqs: %d\n", tcp_get_reqs(c[i]));
                 tcp_abort(c[i]);
                 tcp_close(c[i]);
 		

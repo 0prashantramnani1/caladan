@@ -1,0 +1,85 @@
+Threads: 1 ------ Time: 10 ------ Depth: 1
+
+
+
+payload_size: 64
+num_flows 10     Throughput: 274001.3333333333
+-----------------------
+num_flows 50     Throughput: 1970412.3333333333
+-----------------------
+num_flows 150     Throughput: 1766961.6666666667
+-----------------------
+
+
+payload_size: 128
+num_flows 10     Throughput: 439527.3333333333
+-----------------------
+num_flows 50     Throughput: 1776989.0
+-----------------------
+num_flows 150     Throughput: 1588678.3333333333
+-----------------------
+
+
+payload_size: 256
+num_flows 10     Throughput: 434304.6666666667
+-----------------------
+num_flows 50     Throughput: 1836250.6666666667
+-----------------------
+num_flows 150     Throughput: 1678049.0
+-----------------------
+
+
+payload_size: 512
+num_flows 10     Throughput: 437449.3333333333
+-----------------------
+num_flows 50     Throughput: 1665177.0
+-----------------------
+num_flows 150     Throughput: 1684892.6666666667
+-----------------------
+
+
+payload_size: 1024
+num_flows 10     Throughput: 377681.0
+-----------------------
+num_flows 50     Throughput: 1493588.0
+-----------------------
+num_flows 150     Throughput: 1541219.6666666667
+-----------------------
+
+
+payload_size: 2048
+num_flows 10     Throughput: 331842.6666666667
+-----------------------
+num_flows 50     Throughput: 1435658.3333333333
+-----------------------
+num_flows 150     Throughput: 1368258.0
+-----------------------
+
+
+payload_size: 4096
+num_flows 10     Throughput: 731530.6666666666
+-----------------------
+num_flows 50     Throughput: 1296208.3333333333
+-----------------------
+num_flows 150     Throughput: 1285187.3333333333
+-----------------------
+
+
+payload_size: 8192
+num_flows 10     Throughput: 1200209.6666666667
+-----------------------
+num_flows 50     Throughput: 1236228.6666666667
+-----------------------
+num_flows 150     Throughput: 1227738.3333333333
+-----------------------
+
+
+payload_size: 16384
+num_flows 10     Throughput: 1245126.6666666667
+-----------------------
+num_flows 50     Throughput: 1215488.0
+-----------------------
+num_flows 150     Throughput: 1219429.6666666667
+-----------------------
+
+

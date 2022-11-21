@@ -988,8 +988,10 @@ ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 	/* wakeup any pending readers */
 	tcp_read_finish(c, m);
 	//printf("tcp_read_epoll: %d\n", buf[0]);
-	c->reqs++;
 	if(ret > 0) {
+		//printf("ret: %d\n", ret);
+		c->reqs += ret;
+		//printf("tcp_read_poll: write_buf: %d\n", buf[0]);
 		int tmp = tcp_write(c, buf, ret);
 	}
 	return ret;
@@ -1168,20 +1170,25 @@ static void tcp_write_finish(tcpconn_t *c)
  */
 ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len)
 {
+	//printf("2.1.1\n");
 	size_t winlen;
 	ssize_t ret;
 
 	/* block until the data can be sent */
 	ret = tcp_write_wait(c, &winlen);
+	//printf("2.1.2\n");
 	if (ret)
 		return ret;
-
+	
+	//printf("tcp_write: len: %d\n", len);
 	/* actually send the data */
 	ret = tcp_tx_send(c, buf, MIN(len, winlen), true);
 
+	//printf("2.1.3\n");
 	/* catch up on any pending work */
 	tcp_write_finish(c);
 
+	//printf("2.1.4\n");
 	return ret;
 }
 
