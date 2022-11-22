@@ -151,5 +151,5 @@ submodules:
 .PHONY: clean
 clean:
 	rm -f $(obj) $(dep) libbase.a libnet.a libruntime.a \
-	iokerneld $(test_targets) neper/*.o neper/tcp_rr 
+	iokerneld $(test_targets) neper/*.o neper/tcp_stream 
 

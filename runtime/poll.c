@@ -308,7 +308,6 @@ int poll_cb_once(poll_waiter_t *w)
  */
 int poll_return_triggers(poll_waiter_t *w, poll_trigger_t *events, int max_events)
 {
-	bool processed_events = false;
 	poll_trigger_t *t;
 	int ret = 1;
 	int nevents = 0;
@@ -323,22 +322,25 @@ int poll_return_triggers(poll_waiter_t *w, poll_trigger_t *events, int max_event
 		t = list_pop(&w->triggered, poll_trigger_t, link);
 
 		if (!t) {
+			// printf("poll_return_trigger: RETURNING as no more triggers left in waiter\n");
 			spin_unlock_np(&w->lock);
-			if (processed_events) return 0;
+
 			return nevents;
 		}
 
+		printf("SETTING TRIGGER TO FALSE\n");
 		t->triggered = false;
 		spin_unlock_np(&w->lock);
 
-		processed_events = true;
+		// processed_events = true;
 
-		if(t->queue != NULL) {
-			// Hack to make tcpqueue level triggered
-			tcpqueue_check_triggers(t->queue);
-		}
+		// if(t->queue != NULL) {
+		// 	// Hack to make tcpqueue level triggered
+		// 	tcpqueue_check_triggers(t->queue);
+		// }
 		
-		events[nevents++] = *t;
+		events[nevents] = *t;
+		nevents++;
 		if(nevents >= max_events) {
 			return nevents;
 		}
@@ -353,7 +355,7 @@ int poll_return_triggers(poll_waiter_t *w, poll_trigger_t *events, int max_event
  */
 void poll_trigger(poll_waiter_t *w, poll_trigger_t *t)
 {
-	//printf("poll trigger: \n");
+	printf("poll trigger: \n");
 	thread_t *wth = NULL;
 
 	spin_lock_np(&w->lock);
@@ -361,6 +363,7 @@ void poll_trigger(poll_waiter_t *w, poll_trigger_t *t)
 		spin_unlock_np(&w->lock);
 		return;
 	}
+	printf("poll trigger: triggering the trigger\n");
 	t->triggered = true;
 	// if(t->sock != NULL) {
 	// 	int raddr_port = tcp_get_raddr_port(t->sock);
