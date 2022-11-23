@@ -86,6 +86,35 @@ ip link set eth0 mtu 9000
 Then use the (`host_mtu`) option in the config file of each runtime to set the
 MTU to the value you'd like, up to the size of the MTU set for the interface.
 
+In order to enable larger MTUs when using the IOKernel, you will also need to change
+the value of 
+```
+#define RTE_MBUF_DEFAULT_DATAROOM       4096
+```
+located in
+```
+dpdk/lib/mbuf/rte_mbuf_core.h
+```
+To recompile DPDP, follow these instructions starting from caladan's home directory (assuming mlx NICs)
+```
+export EXTRA_CFLAGS=-I$PWD/rdma-core/build/include
+export EXTRA_LDFLAGS=-L$PWD/rdma-core/build/lib
+export PKG_CONFIG_PATH=$PWD/rdma-core/build/lib/pkgconfig
+
+cd dpdk
+
+ninja -C build
+ninja -C build install
+cd ..
+
+export EXTRA_CFLAGS=
+export EXTRA_LDFLAGS=
+export PKG_CONFIG_PATH=
+```
+
+If you are using QUIC on top of shenango, make sure to also change the MTU size in QUIC.
+
+
 #### Directpath
 Directpath allows runtime cores to directly send packets to/receive packets from the NIC, enabling
 higher throughput than when the IOKernel handles all packets.

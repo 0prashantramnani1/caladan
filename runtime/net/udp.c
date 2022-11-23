@@ -461,7 +461,7 @@ ssize_t udp_write_to(udpconn_t *c, const void *buf, size_t len,
 	spin_unlock_np(&c->outq_lock);
 
 
-	int max_content_length = 4000;
+	int max_content_length = 3958;
 	n_pkts = DIV_CEIL(len, max_content_length);
 //	log_info("sending %d n_pkts ", n_pkts);
 	int count = 0;

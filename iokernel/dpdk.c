@@ -49,7 +49,7 @@
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 256
 
-#define IOKERNEL_MTU 1500
+#define IOKERNEL_MTU 4000
 
 #define MLX5_RX_RING_SIZE 2048
 #define MLX5_TX_RING_SIZE 2048
@@ -63,7 +63,6 @@ int dpdk_argc;
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
 		.mtu = IOKERNEL_MTU,
-		.split_hdr_size = 0,
 		.offloads = RTE_ETH_RX_OFFLOAD_IPV4_CKSUM,
 		.mq_mode = RTE_ETH_MQ_RX_RSS | RTE_ETH_MQ_RX_RSS_FLAG,
 	},
