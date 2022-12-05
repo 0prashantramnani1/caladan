@@ -235,12 +235,16 @@ static uint32_t tcp_scale_window(uint32_t maxwin)
  */
 tcpconn_t *tcp_conn_alloc(void)
 {
+	printf("TCP_CONN_ALLOC: \n");
 	tcpconn_t *c;
 
 	c = smalloc(sizeof(*c));
-	if (!c)
+	if (!c) {
+		printf("TCP_CONN_ALLOC: CONNECTION IS NULLLL!!!!\n");
 		return NULL;
+	}
 
+	printf("TCP_CONN_ALLOC: 1\n");
 	/* general fields */
 	memset(&c->pcb, 0, sizeof(c->pcb));
 	spin_lock_init(&c->lock);
@@ -412,6 +416,8 @@ struct tcpqueue {
 
 	struct kref ref;
 	struct flow_registration flow;
+
+	int num_connections_accpeted;
 };
 /*
 struct tcparg {
@@ -516,9 +522,32 @@ void tcpqueue_check_triggers(tcpqueue_t *q)
 	spin_unlock_np(&q->l);
 }
 
+// TODO: complete
+// Return legth for now
+bool is_tcp_rx_empty(tcpconn_t *c) {
+	return list_empty(&c->rxq);
+}
+
+void tcpconn_check_triggers(tcpconn_t *c)
+{
+	spin_lock_np(&c->lock);
+
+	if(!list_empty(&c->rxq)) {
+		poll_trigger_t *pt;
+		list_for_each(&c->sock_events, pt, sock_link) {
+			if ((pt->event_type & SEV_READ) && !pt->triggered) {
+					// printf("EXTRA CEHCK: going into poll trigger\n");
+					poll_trigger(pt->waiter, pt);
+			}
+		}
+	}
+	spin_unlock_np(&c->lock);
+}
+
 void tcpqueue_set_nonblocking(tcpqueue_t *q, bool nonblocking)
 {
 	q->non_blocking = nonblocking;
+	q->num_connections_accpeted = 0;
 }
 /**
  * tcp_listen - creates a TCP listening queue for a local address
@@ -607,6 +636,8 @@ int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 	/* otherwise a new connection is available */
 	q->backlog++;
 	c = list_pop(&q->conns, tcpconn_t, queue_link);
+	q->num_connections_accpeted ++;
+	printf("Number of connections accepted till now %d\n", q->num_connections_accpeted);
 	assert(c != NULL);
 	spin_unlock_np(&q->l);
 	printf("2.2.5!!!!!!!!\n");
@@ -979,6 +1010,7 @@ ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len)
 	/* wakeup any pending readers */
 	tcp_read_finish(c, m);
 
+	c->reqs += ret;
 	return ret;
 }
 

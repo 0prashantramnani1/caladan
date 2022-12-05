@@ -84,7 +84,15 @@ static void tcp_rx_append_text(tcpconn_t *c, struct mbuf *m)
 	nxt_wnd = (uint64_t)m->seg_end;
 	nxt_wnd |= ((uint64_t)(c->pcb.rcv_wnd - (m->seg_end - m->seg_seq)) << 32);
 	store_release(&c->pcb.rcv_nxt_wnd, nxt_wnd);
+	// printf("TCP RX append text: adding to c->rxq \n");
 	list_add_tail(&c->rxq, &m->link);
+
+	if (c->non_blocking) {
+		poll_trigger_t *pt;
+		list_for_each(&c->sock_events, pt, sock_link) {
+			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+		}
+	}
 }
 
 /* process RX text segments, returning true if @m is used for text */
@@ -268,20 +276,19 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	/* should we wake a thread */
 	if (!list_empty(&c->rxq) || (tcphdr->flags & TCP_PUSH) > 0)
 		rx_th = waitq_signal(&c->rx_wq, &c->lock);
+		
 	if(c->non_blocking) {
 	//	printf("tcp_rx_conn: c is non blocking\n");
 	}
 	if(rx_th == NULL) {
-	//	printf("tcp_rx_conn: waiting thread (rx_th) is null \n");
-	}
-	if (!rx_th && c->non_blocking) {
-	//	printf("tcp_rx_conn: inside POLL loop\n");
-		poll_trigger_t *pt;
-		list_for_each(&c->sock_events, pt, sock_link) {
-	//		printf("tcp_rx_conn: in list loop \n");
-			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
-		}
-	}
+		// printf("tcp_rx_conn: waiting thread (rx_th) is null \n");
+	} 
+	// if (!rx_th && c->non_blocking) {
+	// 	poll_trigger_t *pt;
+	// 	list_for_each(&c->sock_events, pt, sock_link) {
+	// 		if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+	// 	}
+	// }
 	//printf("tcp_rx_conn: done with poll loop\n");
 	/* handle delayed acks */
 	if (++c->acks_delayed_cnt >= 2) {
@@ -295,6 +302,14 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	}
 
 	list_add_tail(&c->rxq, &m->link);
+
+	if (!rx_th && c->non_blocking) {
+		poll_trigger_t *pt;
+		list_for_each(&c->sock_events, pt, sock_link) {
+			if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
+		}
+	}
+
 	tcp_debug_ingress_pkt(c, m);
 	spin_unlock_np(&c->lock);
 

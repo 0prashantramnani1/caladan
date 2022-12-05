@@ -151,6 +151,7 @@ int tcp_tx_ack(tcpconn_t *c)
 	m->seg_seq = load_acquire(&c->pcb.snd_nxt);
 	tcp_push_tcphdr(m, c, TCP_ACK, 5, 0);
 
+	// printf("Sending ACK for mbuf size: %d\n", sizeof(m));
 	/* transmit packet */
 	tcp_debug_egress_pkt(c, m);
 	ret = net_tx_ip(m, IPPROTO_TCP, c->e.raddr.ip);
