@@ -634,7 +634,6 @@ done:
 /* handles ingress packets for TCP listener queues */
 tcpconn_t *tcp_rx_listener(struct netaddr laddr, struct mbuf *m)
 {
-	printf("tcp_rx_listener: \n");
 	struct netaddr raddr;
 	const struct ip_hdr *iphdr;
 	const struct tcp_hdr *tcphdr;
@@ -644,14 +643,12 @@ tcpconn_t *tcp_rx_listener(struct netaddr laddr, struct mbuf *m)
 	uint32_t hdr_len;
 	int optlen, ret;
 
-	printf("tcp_rx_listener: 1\n");
 	/* find header offsets */
 	iphdr = mbuf_network_hdr(m, *iphdr);
 	tcphdr = mbuf_pull_hdr_or_null(m, *tcphdr);
 	if (unlikely(!tcphdr))
 		return NULL;
 
-	printf("tcp_rx_listener: 2\n");
 	/* calculate local and remote network addresses */
 	raddr.ip = ntoh32(iphdr->saddr);
 	raddr.port = ntoh16(tcphdr->sport);
@@ -666,20 +663,17 @@ tcpconn_t *tcp_rx_listener(struct netaddr laddr, struct mbuf *m)
 	if ((tcphdr->flags & TCP_SYN) == 0)
 		return NULL;
 
-	printf("tcp_rx_listener: 3\n");
 	/* TODO: the spec requires us to enqueue but not post any data */
 	hdr_len = tcphdr->off * sizeof(uint32_t);
 	if (ntoh16(iphdr->len) - sizeof(*iphdr) != hdr_len)
 		return NULL;
 
-	printf("tcp_rx_listener: 4\n");
 	/* parse options */
 	optlen = hdr_len - sizeof(struct tcp_hdr);
 	optp = mbuf_pull_or_null(m, optlen);
 	if (!optp)
 		return NULL;
 
-	printf("tcp_rx_listener: 5\n");
 	/* we have a valid SYN packet, initialize a new connection */
 	c = tcp_conn_alloc();
 	if (unlikely(!c))
@@ -692,18 +686,15 @@ tcpconn_t *tcp_rx_listener(struct netaddr laddr, struct mbuf *m)
 	opts.mss = c->pcb.rcv_mss;
 	opts.wscale = c->pcb.rcv_wscale;
 
-	printf("tcp_rx_listener: 6\n");
 	/*
 	 * attach the connection to the transport layer. From this point onward
 	 * ingress packets can be dispatched to the connection.
 	 */
 	ret = tcp_conn_attach(c, laddr, raddr);
 	if (unlikely(ret)) {
-		printf("tcp_rx_listener: 6.5 unlikely\n");
 		sfree(c);
 		return NULL;
 	}
-	printf("tcp_rx_listener: 7\n");
 	tcp_debug_ingress_pkt(c, m);
 
 	/* finally, send a SYN/ACK to the remote host */

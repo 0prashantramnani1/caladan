@@ -58,4 +58,5 @@ extern void tcpconn_check_triggers(tcpconn_t *c);
 extern bool is_tcp_rx_empty(tcpconn_t *c);
 
 extern long long int tcp_get_reqs(tcpconn_t *c);
+extern int tcpqueue_get_num_connections_accepted(tcpqueue_t *q);
 

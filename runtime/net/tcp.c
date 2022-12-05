@@ -235,7 +235,6 @@ static uint32_t tcp_scale_window(uint32_t maxwin)
  */
 tcpconn_t *tcp_conn_alloc(void)
 {
-	printf("TCP_CONN_ALLOC: \n");
 	tcpconn_t *c;
 
 	c = smalloc(sizeof(*c));
@@ -244,7 +243,6 @@ tcpconn_t *tcp_conn_alloc(void)
 		return NULL;
 	}
 
-	printf("TCP_CONN_ALLOC: 1\n");
 	/* general fields */
 	memset(&c->pcb, 0, sizeof(c->pcb));
 	spin_lock_init(&c->lock);
@@ -307,32 +305,25 @@ tcpconn_t *tcp_conn_alloc(void)
 int tcp_conn_attach(tcpconn_t *c, struct netaddr laddr, struct netaddr raddr)
 {
 	int ret;
-	printf("tcp_conn_attch: \n");
 	if (laddr.ip == 0)
 		 laddr.ip = netcfg.addr;
 	else if (laddr.ip != netcfg.addr)
 		return -EINVAL;
 
 	trans_init_5tuple(&c->e, IPPROTO_TCP, &tcp_conn_ops, laddr, raddr);
-	printf("tcp_conn_attch: 1\n");
 	if (laddr.port == 0) {
-		printf("tcp_conn_attch: 1.2\n");
 		ret = trans_table_add_with_ephemeral_port(&c->e);
 	}
 	else {
-		printf("tcp_conn_attch: 1.3\n");
 		ret = trans_table_add(&c->e);
 	}
 	if (ret)
 		return ret;
 
 	spin_lock_np(&tcp_lock);
-	printf("tcp_conn_attch: 2\n");
 	list_add_tail(&tcp_conns, &c->global_link);
-	printf("tcp_conn_attch: 3\n");
 	spin_unlock_np(&tcp_lock);
 
-	printf("tcp_conn_attch: 4\n");
 	c->attach_ts = microtime();
 
 	return 0;
@@ -428,54 +419,43 @@ struct tcparg {
 
 static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 {
-	printf("tcp_queue_recv: \n");
 	tcpqueue_t *q = container_of(e, tcpqueue_t, e);
 	tcpconn_t *c;
 	thread_t *th;
-	printf("tcp_queue_recv: 1\n");
+
 	/* make sure the connection queue isn't full */
 	spin_lock_np(&q->l);
 	if (unlikely(q->backlog == 0 || q->shutdown)) {
-		printf("tcp_queue_recv: unlikely\n");
 		spin_unlock_np(&q->l);
 		goto done;
 	}
-	printf("tcp_queue_recv: 2\n");
 	q->backlog--;
 	spin_unlock_np(&q->l);
-	printf("tcp_queue_recv: 2.5\n");
+
 	/* create a new connection */
 	c = tcp_rx_listener(e->laddr, m);
-	printf("tcp_queue_recv: 3\n");
 	if (!c) {
-		printf("tcp_queue_recv: creating new connection failed\n");
 		spin_lock_np(&q->l);
 		q->backlog++;
 		spin_unlock_np(&q->l);
 		goto done;
 	}
 
-	printf("tcp_queue_recv: 4\n");
 	/* wake a thread to accept the connection */
 	spin_lock_np(&q->l);
 	list_add_tail(&q->conns, &c->queue_link);
 	th = waitq_signal(&q->wq, &q->l);
-	printf("tcp_queue_recv: thread should be null\n");
-	if(th == NULL) {
-		printf("tcp_queue_recv: waiting thread is null\n");
-	}	
+	
 	// If no thread is waiting on accept()
 	if (!th && q->non_blocking) {
 		poll_trigger_t *pt;
 		list_for_each(&q->sock_events, pt, sock_link) {
-			printf("tcp_queue_recv: in poll loop\n");
 			if ((pt->event_type & SEV_READ) && !pt->triggered) {
 				printf("tcp_queue_recv: going into poll_trigger\n");
 			       	poll_trigger(pt->waiter, pt);
 			}
 		}
 	}
-	printf("tcp_queue_recv: done with poll loop\n");
 
 	spin_unlock_np(&q->l);
 	waitq_signal_finish(th);
@@ -613,36 +593,37 @@ int tcp_listen(struct netaddr laddr, int backlog, tcpqueue_t **q_out)
 int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 {
 	tcpconn_t *c;
-	printf("2.2.0!!!!!!!!\n");
-	if(q == NULL) {
-		printf("NULLLLL");
-	}
+
 	spin_lock_np(&q->l);
-	printf("2.2.1!!!!!!!!\n");
+
 	if (list_empty(&q->conns) && !q->shutdown && q->non_blocking) {
 		spin_unlock_np(&q->l);
 		return 0;
 	}
-	printf("2.2.2!!!!!!!!\n");
+
 	while (list_empty(&q->conns) && !q->shutdown)
 		waitq_wait(&q->wq, &q->l);
-	printf("2.2.3!!!!!!!!\n");
+
 	/* was the queue drained and shutdown? */
 	if (list_empty(&q->conns) && q->shutdown) {
 		spin_unlock_np(&q->l);
 		return -EPIPE;
 	}
-	printf("2.2.4!!!!!!!!\n");
+
 	/* otherwise a new connection is available */
 	q->backlog++;
 	c = list_pop(&q->conns, tcpconn_t, queue_link);
-	q->num_connections_accpeted ++;
-	printf("Number of connections accepted till now %d\n", q->num_connections_accpeted);
+	q->num_connections_accpeted++;
+	
 	assert(c != NULL);
 	spin_unlock_np(&q->l);
-	printf("2.2.5!!!!!!!!\n");
+
 	*c_out = c;
 	return 0;
+}
+
+int tcpqueue_get_num_connections_accepted(tcpqueue_t *q) {
+	return q->num_connections_accpeted;
 }
 
 /**
