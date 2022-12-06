@@ -328,7 +328,7 @@ int poll_return_triggers(poll_waiter_t *w, poll_trigger_t **events, int max_even
 			for(int i=0;i<nevents;i++) {
 				if(events[i]->event_type & SEV_WRITE) {
 					events[i]->triggered = true;
-					list_add(&w->triggered, &(events[i]->link));
+					list_add_tail(&w->triggered, &(events[i]->link));
 				}
 			}
 
@@ -345,7 +345,7 @@ int poll_return_triggers(poll_waiter_t *w, poll_trigger_t **events, int max_even
 			for(int i=0;i<nevents;i++) {
 				if(events[i]->event_type & SEV_WRITE) {
 					events[i]->triggered = true;
-					list_add(&w->triggered, &(events[i]->link));
+					list_add_tail(&w->triggered, &(events[i]->link));
 				}
 			}
 

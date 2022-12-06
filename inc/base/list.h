@@ -167,21 +167,10 @@ static inline void list_head_init(struct list_head *h)
  */
 static inline void list_add(struct list_head *h, struct list_node *n)
 {
-	// printf("List_Add: 1\n");
-	// printf("SIZEEEE h: %d\n", sizeof(*h));
-	// printf("SIZEEEE h->n: %d\n", sizeof(h->n));
-	// if(h->n.next == NULL)
-	// 	printf("NULL : h->n.next:");
-	// if(n->next == NULL)
-	// 	printf("NULL : n->next:");
 	n->next = h->n.next;
-	// printf("List_Add: 2\n");
 	n->prev = &h->n;
-	// printf("List_Add: 3\n");
 	h->n.next->prev = n;
-	// printf("List_Add: 4\n");
 	h->n.next = n;
-	// printf("List_Add: 5\n");
 	(void)list_debug(h);
 }
 
