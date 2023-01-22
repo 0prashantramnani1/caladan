@@ -42,6 +42,7 @@ struct iokernel_control iok;
 bool cfg_prio_is_lc;
 uint64_t cfg_ht_punish_us;
 uint64_t cfg_qdelay_us = 10;
+uint64_t cfg_quantum_us = 100;
 
 static int generate_random_mac(struct eth_addr *mac)
 {
@@ -174,10 +175,14 @@ static void ioqueue_alloc(struct queue_spec *q, size_t msg_count,
  */
 int ioqueues_init(void)
 {
+	bool has_mac = false;
 	int i, ret;
 	struct thread_spec *ts;
 
-	if (!netcfg.mac.addr[0]) {
+	for (i = 0; i < ARRAY_SIZE(netcfg.mac.addr); i++)
+		has_mac |= netcfg.mac.addr[i] != 0;
+
+	if (!has_mac) {
 		ret = generate_random_mac(&netcfg.mac);
 		if (ret < 0)
 			return ret;
@@ -257,7 +262,7 @@ int ioqueues_register_iokernel(void)
 	hdr->sched_cfg.max_cores = maxks;
 	hdr->sched_cfg.guaranteed_cores = guaranteedks;
 	hdr->sched_cfg.preferred_socket = preferred_socket;
-
+	hdr->sched_cfg.quantum_us = cfg_quantum_us;
 	hdr->thread_specs = ptr_to_shmptr(r, iok.threads, sizeof(*iok.threads) * maxks);
 
 	/* register with iokernel */

@@ -63,7 +63,7 @@ void poll_arm(poll_waiter_t *w, poll_trigger_t *t, unsigned long data)
 	t->waiter = w;
 	t->triggered = false;
 	t->data = data;
-	
+
 	spin_lock_np(&w->lock);
 	w->counter++;
 	spin_unlock_np(&w->lock);
@@ -141,6 +141,7 @@ void poll_disarm(poll_trigger_t *t)
 		list_del(&t->link);
 		t->triggered = false;
 	}
+	w->counter--;
 	spin_unlock_np(&w->lock);
 
 	t->waiter = NULL;

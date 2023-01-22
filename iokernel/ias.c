@@ -71,9 +71,8 @@ static int ias_attach(struct proc *p, struct sched_spec *sched_cfg)
 	sd->is_lc = sched_cfg->priority == SCHED_PRIO_LC;
 	if (sd->is_lc)
 		sd->ht_punish_us = sched_cfg->ht_punish_us;
-	if (sd->ht_punish_us)
-		sd->ht_punish_tsc_inv = 1.0 / (float)(sd->ht_punish_us * cycles_per_us);
 	sd->qdelay_us = sched_cfg->qdelay_us;
+	sd->quantum_us = sched_cfg->quantum_us;
 	sd->threads_active = 0;
 	p->policy_data = (unsigned long)sd;
 	list_add(&all_procs, &sd->all_link);
@@ -262,11 +261,11 @@ static float ias_locality_score(struct ias_data *sd, unsigned int core)
 	unsigned int sib = sched_siblings[core];
 
 	/* if the sibling is already running the process, locality is perfect */
-	if (cores[sib] == sd)
+	if (!cfg.noht && cores[sib] == sd)
 		return 1.0f;
 
 	delta_us = now_us - MAX(sd->loc_last_us[core],
-				sd->loc_last_us[sib]);
+				cfg.noht ? 0 : sd->loc_last_us[sib]);
 	if (delta_us >= IAS_LOC_EVICTED_US)
 		return 0.0f;
 	return (float)(IAS_LOC_EVICTED_US - delta_us) / IAS_LOC_EVICTED_US;
@@ -275,13 +274,17 @@ static float ias_locality_score(struct ias_data *sd, unsigned int core)
 static float ias_core_score(struct ias_data *sd, unsigned int core)
 {
 	float score;
-	struct ias_data *sib_task = cores[sched_siblings[core]];
+	struct ias_data *sib_task;
 
 	score = ias_locality_score(sd, core);
 
 	if (bitmap_test(sd->reserved_cores, core))
 		score += 7.0f;
 
+	if (cfg.noht)
+		return score;
+
+	sib_task = cores[sched_siblings[core]];
 	if (!cfg.ias_prefer_selfpair && sib_task != sd) {
 		score += 3.0f;
 		if (sib_task == NULL && cores[core] == NULL)
@@ -329,7 +332,7 @@ bool ias_can_add_kthread(struct ias_data *sd, bool ignore_ht_punish_cores)
 	sched_for_each_allowed_core(core, tmp) {
 		if (!ias_can_preempt_core(sd, core))
 			continue;
-		if (ignore_ht_punish_cores &&
+		if (!cfg.noht && ignore_ht_punish_cores &&
 		    ias_ht_budget_used(sched_siblings[core]) >= 1.0f)
 			continue;
 		return true;
@@ -344,16 +347,19 @@ int ias_add_kthread(struct ias_data *sd)
 
 	/* check if we're constrained by the thread limit */
 	if (sd->threads_active >= sd->threads_limit) {
-		core = ias_ht_relinquish_core(sd);
-		if (core != NCPU)
-			goto done;
+		if (!cfg.noht) {
+			core = ias_ht_relinquish_core(sd);
+			if (core != NCPU)
+				goto done;
+		}
 		return -ENOENT;
 	}
 
 	/* choose the best core to run the process on */
 	core = ias_choose_core(sd);
 	if (core == NCPU) {
-		core = ias_ht_relinquish_core(sd);
+		if (!cfg.noht)
+			core = ias_ht_relinquish_core(sd);
 		if (core == NCPU)
 			return -ENOENT;
 	}
@@ -369,7 +375,8 @@ static int ias_notify_core_needed(struct proc *p)
 	return ias_add_kthread(sd);
 }
 
-static void ias_notify_congested(struct proc *p, bool busy, uint64_t delay, bool parked_thread_delay)
+static void ias_notify_congested(struct proc *p, bool busy, uint64_t delay,
+				 bool parked_thread_delay)
 {
 	struct ias_data *sd = (struct ias_data *)p->policy_data;
 	int ret;
@@ -476,6 +483,7 @@ static void ias_print_debug_info(void)
 		 ias_bw_relax_count, ias_bw_sample_failures, ias_bw_sample_aborts);
 	log_info("tsc %lu ht_punish %ld ht_relax %ld", now, ias_ht_punish_count,
 		 ias_ht_relax_count);
+	log_info("tsc %lu ts_count %ld", now, ias_ts_yield_count);
 
 	memset(printed, 0, sizeof(printed));
 	bitmap_for_each_set(sched_allowed_cores, NCPU, core) {
@@ -483,9 +491,15 @@ static void ias_print_debug_info(void)
 			continue;
 		}
 		sib = sched_siblings[core];
-		printed[core] = printed[sib] = true;
 		int pid0 = cores[core] ? cores[core]->p->pid : -1;
-		int pid1 = cores[sib] ? cores[sib]->p->pid : -1;
+		printed[core] = true;
+		int pid1 = -1;
+
+		if (!cfg.noht) {
+			pid1 = cores[sib] ? cores[sib]->p->pid : -1;
+			printed[sib] = true;
+		}
+
 		log_info("core %d, %d (owner: %d): pid %d, %d", core, sib,
 			 owners[core], pid0, pid1);
 	}
@@ -494,7 +508,7 @@ static void ias_print_debug_info(void)
 
 static void ias_sched_poll(uint64_t now, int idle_cnt, bitmap_ptr_t idle)
 {
-	static uint64_t last_bw_us, last_ht_us;
+	static uint64_t last_us;
 #ifdef IAS_DEBUG
 	static uint64_t debug_ts = 0;
 #endif
@@ -516,16 +530,14 @@ static void ias_sched_poll(uint64_t now, int idle_cnt, bitmap_ptr_t idle)
 		ias_add_kthread_on_core(core);
 	}
 
-	/* try to run the bandwidth controller */
-	if (!cfg.nobw && now - last_bw_us >= IAS_BW_INTERVAL_US) {
-		last_bw_us = now;
-		ias_bw_poll();
-	}
-
-	/* try to run the hyperthread controller */
-	if (!cfg.noht && now - last_ht_us >= IAS_HT_INTERVAL_US) {
-		last_ht_us = now;
-		ias_ht_poll();
+	/* try to run the subcontroller polling stages */
+	if (now - last_us >= IAS_POLL_INTERVAL_US) {
+		last_us = now;
+		if (!cfg.nobw)
+			ias_bw_poll();
+		if (!cfg.noht)
+			ias_ht_poll();
+		ias_ts_poll();
 	}
 
 #ifdef IAS_DEBUG

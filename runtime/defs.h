@@ -408,7 +408,8 @@ struct kthread {
 	bool			directpath_busy;
 	bool			timer_busy;
 	bool			storage_busy;
-	unsigned int		pad2[3];
+	unsigned int		pad2;
+	uint64_t		last_softirq_tsc;
 
 	/* 9th cache-line, storage nvme queues */
 	struct storage_q	storage_q;
@@ -462,6 +463,20 @@ static inline void putk(void)
 	preempt_enable();
 }
 
+/* preempt_cede_needed - check if kthread should cede */
+static inline bool preempt_cede_needed(struct kthread *k)
+{
+	return ACCESS_ONCE(k->q_ptrs->curr_grant_gen) ==
+	       ACCESS_ONCE(k->q_ptrs->cede_gen);
+}
+
+/* preempt_yield_needed - check if current uthread should yield */
+static inline bool preempt_yield_needed(struct kthread *k)
+{
+        return ACCESS_ONCE(k->q_ptrs->yield_rcu_gen) == k->rcu_gen;
+}
+
+
 DECLARE_SPINLOCK(klock);
 extern unsigned int spinks;
 extern unsigned int nrks;
@@ -469,6 +484,7 @@ extern struct kthread *ks[NCPU];
 extern bool cfg_prio_is_lc;
 extern uint64_t cfg_ht_punish_us;
 extern uint64_t cfg_qdelay_us;
+extern uint64_t cfg_quantum_us;
 
 extern void kthread_park(bool voluntary);
 extern void kthread_wait_to_attach(void);
@@ -499,8 +515,8 @@ extern int preferred_socket;
  */
 
 extern bool disable_watchdog;
-extern bool softirq_pending(struct kthread *k);
-extern bool softirq_sched(struct kthread *k);
+extern bool softirq_pending(struct kthread *k, uint64_t now_tsc);
+extern bool softirq_run_locked(struct kthread *k);
 extern bool softirq_run(void);
 
 
@@ -541,6 +557,7 @@ struct net_driver_ops {
 	int (*register_flow)(unsigned int affininty, struct trans_entry *e, void **handle_out);
 	int (*deregister_flow)(struct trans_entry *e, void *handle);
 	uint32_t (*get_flow_affinity)(uint8_t ipproto, uint16_t local_port, struct netaddr remote);
+	int (*rxq_has_work)(struct hardware_q *rxq);
 };
 
 extern struct net_driver_ops net_ops;
@@ -548,11 +565,12 @@ extern struct net_driver_ops net_ops;
 #ifdef DIRECTPATH
 
 extern bool cfg_directpath_enabled;
+extern char directpath_arg[128];
 struct direct_txq {};
 
 static inline bool rx_pending(struct hardware_q *rxq)
 {
-	return cfg_directpath_enabled && hardware_q_pending(rxq);
+	return cfg_directpath_enabled && net_ops.rxq_has_work(rxq);
 }
 
 extern size_t directpath_rx_buf_pool_sz(unsigned int nrqs);

@@ -15,6 +15,11 @@
 
 #include "defs.h"
 
+
+#ifndef MAX
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
+
 #define IP_ID_SEED	0x42345323
 #define RX_PREFETCH_STRIDE 2
 
@@ -90,6 +95,7 @@ static struct mbuf *net_rx_alloc_mbuf(struct rx_net_hdr *hdr)
 
 	/* copy the payload and release the buffer back to the iokernel */
 	memcpy(buf, hdr->payload, hdr->len);
+	//log_info("received a packet of size %d", hdr->len);
 
 	mbuf_init(m, buf, hdr->len, 0);
 	m->len = hdr->len;
@@ -138,6 +144,7 @@ void net_error(struct mbuf *m, int err)
 
 static void net_rx_one(struct mbuf *m)
 {
+	//log_info("net_rx_one 1 got packet %d", mbuf_length(m));
 	const struct eth_hdr *llhdr;
 	const struct ip_hdr *iphdr;
 	uint16_t len;
@@ -298,7 +305,12 @@ void net_tx_release_mbuf(struct mbuf *m)
  *
  * Returns an mbuf, or NULL if out of memory.
  */
-struct mbuf *net_tx_alloc_mbuf(void)
+struct mbuf *net_tx_alloc_mbuf()
+{
+  return net_tx_alloc_mbuf_len(net_get_mtu());
+}
+
+struct mbuf *net_tx_alloc_mbuf_len(unsigned int len)
 {
 	struct mbuf *m;
 	unsigned char *buf;
@@ -313,7 +325,7 @@ struct mbuf *net_tx_alloc_mbuf(void)
 	preempt_enable();
 
 	buf = (unsigned char *)m + MBUF_HEAD_LEN;
-	mbuf_init(m, buf, net_get_mtu(), MBUF_DEFAULT_HEADROOM);
+	mbuf_init(m, buf, MAX(len, net_get_mtu()), MBUF_DEFAULT_HEADROOM);
 	m->csum_type = CHECKSUM_TYPE_NEEDED;
 	m->txflags = 0;
 	m->release_data = 0;
@@ -335,7 +347,7 @@ static void __noinline net_tx_drain_overflow(void)
 		if (net_ops.tx_single(m))
 			break;
 		mbufq_pop_head(&k->txpktq_overflow);
-		if (unlikely(preempt_cede_needed()))
+		if (unlikely(preempt_cede_needed(k)))
 			return;
 	}
 }
@@ -432,6 +444,48 @@ static uint32_t net_get_ip_route(uint32_t daddr)
 	return daddr;
 }
 
+static int net_tx_local_loopback(struct mbuf *m_in, uint8_t proto)
+{
+	int ret;
+	struct mbuf *m;
+	void *buf;
+
+	/* allocate the buffer to store the payload */
+	m = smalloc(mbuf_length(m_in) + MBUF_HEAD_LEN);
+	if (unlikely(!m))
+		return -ENOMEM;
+
+	buf = (unsigned char *)m + MBUF_HEAD_LEN;
+
+	/* copy the payload and release the buffer */
+	memcpy(buf, mbuf_data(m_in), mbuf_length(m_in));
+
+	mbuf_init(m, buf, mbuf_length(m_in), 0);
+	m->len = mbuf_length(m_in);
+	m->csum_type = CHECKSUM_TYPE_UNNECESSARY;
+	m->release = (void (*)(struct mbuf *))sfree;
+
+	mbuf_mark_network_offset(m);
+	mbuf_pull_hdr(m, struct ip_hdr);
+	switch(proto) {
+		case IPPROTO_UDP:
+		case IPPROTO_TCP:
+			/* spawn a thread to handle RX, caller may hold a lock */
+			ret = thread_spawn((void (*)(void *))net_rx_trans, m);
+			if (unlikely(ret)) {
+				log_err_ratelimited("failed to spawn loopback thread");
+				mbuf_drop(m);
+			}
+			break;
+		default:
+			/* don't support ping etc for now */
+			mbuf_drop(m);
+			break;
+	}
+	mbuf_free(m_in);
+	return 0;
+}
+
 /**
  * net_tx_ip - transmits an IP packet
  * @m: the mbuf to transmit
@@ -453,6 +507,10 @@ int net_tx_ip(struct mbuf *m, uint8_t proto, uint32_t daddr)
 
 	/* prepend the IP header */
 	net_push_iphdr(m, proto, daddr);
+
+	/* route loopbacks */
+	if (daddr == netcfg.addr)
+		return net_tx_local_loopback(m, proto);
 
 	/* ask NIC to calculate IP checksum */
 	m->txflags |= OLFLAG_IP_CHKSUM | OLFLAG_IPV4;
@@ -628,7 +686,7 @@ int net_init(void)
 	int ret;
 
 	ret = mempool_create(&net_tx_buf_mp, iok.tx_buf, iok.tx_len, PGSIZE_2MB,
-			     align_up(net_get_mtu() + MBUF_HEAD_LEN + MBUF_DEFAULT_HEADROOM,
+			align_up(net_get_mtu() + MBUF_HEAD_LEN + MBUF_DEFAULT_HEADROOM,
 				      CACHE_LINE_SIZE * 2));
 	if (ret)
 		return ret;

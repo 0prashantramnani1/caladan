@@ -91,15 +91,11 @@ static __always_inline void kthread_yield_to_iokernel(void)
 	uint64_t last_core = k->curr_cpu;
 	ssize_t s;
 
-	clear_preempt_cede_needed();
-
 	/* yield to the iokernel */
-	s = ioctl(ksched_fd, KSCHED_IOC_PARK, 0);
-	while (unlikely(s < 0 || preempt_cede_needed())) {
-		/* preempted while yielding, yield again */
-		clear_preempt_cede_needed();
+	do {
+		clear_preempt_needed();
 		s = ioctl(ksched_fd, KSCHED_IOC_PARK, 0);
-	}
+	} while (unlikely(s < 0 || preempt_cede_needed(k)));
 
 	k->curr_cpu = s;
 	if (k->curr_cpu != last_core)
@@ -240,8 +236,9 @@ void kthread_wait_to_attach(void)
 	struct kthread *k = myk();
 	int s;
 
-	s = ioctl(ksched_fd, KSCHED_IOC_START, 0);
-	BUG_ON(s < 0);
+	do {
+		s = ioctl(ksched_fd, KSCHED_IOC_START, 0);
+	} while (s < 0);
 
 	k->curr_cpu = s;
 	store_release(&cpu_map[s].recent_kthread, k);

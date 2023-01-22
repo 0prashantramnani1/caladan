@@ -49,26 +49,31 @@
 #define RX_RING_SIZE 256
 #define TX_RING_SIZE 256
 
+#define IOKERNEL_MTU 4000
+
 #define MLX5_RX_RING_SIZE 2048
 #define MLX5_TX_RING_SIZE 2048
 
 char *nic_pci_addr_str;
 struct pci_addr nic_pci_addr;
 
+char **dpdk_argv;
+int dpdk_argc;
+
 static const struct rte_eth_conf port_conf_default = {
 	.rxmode = {
-		.max_rx_pkt_len = ETH_MAX_LEN,
-		.offloads = DEV_RX_OFFLOAD_IPV4_CKSUM,
-		.mq_mode = ETH_MQ_RX_RSS | ETH_MQ_RX_RSS_FLAG,
+		.mtu = IOKERNEL_MTU,
+		.offloads = RTE_ETH_RX_OFFLOAD_IPV4_CKSUM,
+		.mq_mode = RTE_ETH_MQ_RX_RSS | RTE_ETH_MQ_RX_RSS_FLAG,
 	},
 	.rx_adv_conf = {
 		.rss_conf = {
 			.rss_key = NULL,
-			.rss_hf = ETH_RSS_NONFRAG_IPV4_TCP | ETH_RSS_NONFRAG_IPV4_UDP,
+			.rss_hf = RTE_ETH_RSS_NONFRAG_IPV4_TCP | RTE_ETH_RSS_NONFRAG_IPV4_UDP,
 		},
 	},
 	.txmode = {
-		.offloads = DEV_TX_OFFLOAD_IPV4_CKSUM | DEV_TX_OFFLOAD_UDP_CKSUM | DEV_TX_OFFLOAD_TCP_CKSUM,
+		.offloads = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | RTE_ETH_TX_OFFLOAD_UDP_CKSUM | RTE_ETH_TX_OFFLOAD_TCP_CKSUM,
 	},
 };
 
@@ -95,12 +100,17 @@ static inline int dpdk_port_init(uint8_t port, struct rte_mempool *mbuf_pool)
 		return -1;
 
 	/* Get default device configuration */
-	rte_eth_dev_info_get(0, &dev_info);
+	rte_eth_dev_info_get(port, &dev_info);
+	dp.device = dev_info.device;
 	rxconf = &dev_info.default_rxconf;
 	rxconf->rx_free_thresh = 64;
-	dp.is_mlx = !strncmp(dev_info.driver_name, "net_mlx", 7);
 
-	if (!strncmp(dev_info.driver_name, "net_mlx5", 8)) {
+	bool is_mlx5 =
+	       !strncmp(dev_info.driver_name, "mlx5_pci",
+	                strlen("mlx5_pci")) ||
+	       !strncmp(dev_info.driver_name, "net_mlx5", strlen("net_mlx5"));
+
+	if (is_mlx5) {
 		nb_rxd = MLX5_RX_RING_SIZE;
 		nb_txd = MLX5_TX_RING_SIZE;
 	}
@@ -197,25 +207,33 @@ void dpdk_print_eth_stats(void)
  */
 int dpdk_init(void)
 {
-	char *argv[nic_pci_addr_str ? 6 : 5];
+	char *argv[4 + (nic_pci_addr_str ? 2 : 1) + dpdk_argc];
 	char buf[10];
 
+	int i, argc = 0;
+
 	/* init args */
-	argv[0] = "./iokerneld";
-	argv[1] = "-l";
+	argv[argc++] = "./iokerneld";
+	argv[argc++] = "-l";
 	/* use our assigned core */
 	sprintf(buf, "%d", sched_dp_core);
-	argv[2] = buf;
-	argv[3] = "--socket-mem=128";
+	argv[argc++] = buf;
+	argv[argc++] = "--socket-mem=128";
 	if (nic_pci_addr_str) {
-		argv[4] = "-w";
-		argv[5] = nic_pci_addr_str;
+		argv[argc++] = "--allow";
+		argv[argc++] = nic_pci_addr_str;
 	} else {
-		argv[4] = "--vdev=net_tap0";
+		argv[argc++] = "--vdev=net_tap0";
 	}
 
+	/* include any user-supplied arguments */
+	for (i = 0; i < dpdk_argc; i++)
+		argv[argc++] = dpdk_argv[i];
+
+	BUG_ON(argc != ARRAY_SIZE(argv));
+
 	/* initialize the Environment Abstraction Layer (EAL) */
-	int ret = rte_eal_init(ARRAY_SIZE(argv), argv);
+	int ret = rte_eal_init(argc, argv);
 	if (ret < 0) {
 		log_err("dpdk: error with EAL initialization");
 		return -1;
@@ -239,7 +257,7 @@ int dpdk_init(void)
 int dpdk_late_init(void)
 {
 	/* initialize port */
-	dp.port = 1;
+	dp.port = 2;
 	if (dpdk_port_init(dp.port, dp.rx_mbuf_pool) != 0) {
 		log_err("dpdk: cannot init port %"PRIu8 "\n", dp.port);
 		return -1;
