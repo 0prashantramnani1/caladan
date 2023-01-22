@@ -28,14 +28,16 @@ unsigned int sched_ctrl_core;	/* used for the iokernel's controlplane */
 
 /* keeps track of which cores are in each NUMA socket */
 struct socket socket_state[NNUMA];
+int managed_numa_node;
 
 /* arrays of core numbers for fast polling */
 unsigned int sched_cores_tbl[NCPU];
 int sched_cores_nr;
-unsigned int sched_siblings_tbl[NCPU];
-int sched_siblings_nr;
+
+static int nr_guaranteed;
 
 struct core_state {
+	struct thread	*last_th;     /* recently run thread, waiting for preemption to complete */
 	struct thread	*pending_th;  /* a thread waiting run */
 	struct thread	*cur_th;      /* the currently running thread */
 	unsigned int	idle:1;	      /* is the core idle? */
@@ -96,6 +98,7 @@ static void sched_enable_kthread(struct thread *th, unsigned int core)
 {
 	struct proc *p = th->p;
 
+	ACCESS_ONCE(th->q_ptrs->curr_grant_gen) = ++th->wake_gen;
 	th->active = true;
 	th->core = core;
 	list_del_from(&p->idle_threads, &th->idle_link);
@@ -130,10 +133,12 @@ static struct thread *sched_pick_kthread(struct proc *p, unsigned int core)
 			return th;
 	}
 
-	/* then try to find a thread that last ran on this core's sibling */
-	list_for_each(&p->idle_threads, th, idle_link) {
-		if (th->core == sched_siblings[core])
-			return th;
+	if (!cfg.noht) {
+		/* then try to find a thread that last ran on this core's sibling */
+		list_for_each(&p->idle_threads, th, idle_link) {
+			if (th->core == sched_siblings[core])
+				return th;
+		}
 	}
 
 	/* finally pick the least recently used thread (to avoid thrashing) */
@@ -155,15 +160,15 @@ __sched_run(struct core_state *s, struct thread *th, unsigned int core)
 	}
 
 	/* check if we need to interrupt the current core */
-	if (!s->idle && s->cur_th != NULL)
+	if (!s->idle && s->cur_th != NULL) {
+		ACCESS_ONCE(s->cur_th->q_ptrs->cede_gen) = s->cur_th->wake_gen;
 		ksched_enqueue_intr(core, KSCHED_INTR_CEDE);
+	}
 
 	/* finally request that the new kthread run on this core */
 	ksched_run(core, th ? th->tid : 0);
-	if (s->cur_th) {
-		sched_disable_kthread(s->cur_th);
-		proc_put(s->cur_th->p);
-	}
+
+	s->last_th = s->cur_th;
 	s->cur_th = th;
 	s->wait = true;
 	s->idle = false;
@@ -226,6 +231,31 @@ int sched_idle_on_core(uint32_t mwait_hint, unsigned int core)
 
 	/* issue the command to idle the core */
 	return __sched_run(s, NULL, core);
+}
+
+/**
+ * sched_yield_on_core - yields the running uthread on the core
+ * @core: the core number to preempt
+ *
+ * Returns 0 if successful, otherwise fail.
+ */
+int sched_yield_on_core(unsigned int core)
+{
+	struct thread *th;
+
+	th = sched_get_thread_on_core(core);
+	if (!th)
+		return -ENOENT;
+
+	/* check to make sure the last yield request finished */
+	if (th->last_yield_rcu_gen == th->metrics.rcu_gen)
+		return 0;
+
+	/* send the yield signal */
+	th->last_yield_rcu_gen = th->metrics.rcu_gen;
+	ACCESS_ONCE(th->q_ptrs->yield_rcu_gen) = th->metrics.rcu_gen;
+	ksched_enqueue_intr(core, KSCHED_INTR_YIELD);
+	return 0;
 }
 
 /**
@@ -301,13 +331,32 @@ sched_measure_hardware_delay(struct thread *th, struct hwq *h,
 	if (cur_tail != last_tail || h->busy_since == UINT64_MAX)
 		h->busy_since = cur_tsc;
 
-	return th->active ? wraps_lt(cur_tail, last_head) :
-				 cur_head != cur_tail;
+	return th->active || (h->queue_steering && th->p->active_thread_count) ?
+		wraps_lt(cur_tail, last_head) : cur_head != cur_tail;
 }
 
 static uint64_t calc_delay_tsc(uint64_t tsc)
 {
 	return cur_tsc - MIN(tsc, cur_tsc);
+}
+
+static void
+sched_update_kthread_metrics(struct thread *th, bool work_pending)
+{
+	uint32_t rcu_gen, uthread_elapsed_tsc;
+
+	rcu_gen = ACCESS_ONCE(th->q_ptrs->rcu_gen);
+	if ((rcu_gen & 0x1) == 0) {
+		/* in scheduler context, no thread running */
+		uthread_elapsed_tsc = 0;
+	} else {
+		uint64_t tsc = ACCESS_ONCE(th->q_ptrs->run_start_tsc);
+		uthread_elapsed_tsc = cur_tsc - MIN(tsc, cur_tsc);
+	}
+
+	th->metrics.uthread_elapsed_us = uthread_elapsed_tsc / cycles_per_us;
+	th->metrics.rcu_gen = rcu_gen;
+	th->metrics.work_pending = work_pending;
 }
 
 static bool
@@ -388,6 +437,7 @@ sched_measure_kthread_delay(struct thread *th,
 		busy = true;
 	*storage_tsc = calc_delay_tsc(th->storage_hwq.busy_since);
 
+	sched_update_kthread_metrics(th, busy);
 	return busy;
 }
 
@@ -466,6 +516,9 @@ static int sched_try_fast_rewake(struct thread *th)
 	int i;
 	struct hwq *h;
 
+	if (unlikely(th->p->kill))
+		return -EINVAL;
+
 	/*
 	 * If the kthread has yielded voluntarily but still has pending I/O
 	 * requests in flight, we can just wake it back up directly without
@@ -534,17 +587,20 @@ void sched_poll(void)
 
 		/* check if a pending context switch finished */
 		if (s->wait && ksched_poll_run_done(core)) {
+			if (s->last_th) {
+				sched_disable_kthread(s->last_th);
+				proc_put(s->last_th->p);
+				s->last_th = NULL;
+			}
 			if (s->pending) {
 				struct thread *th = s->pending_th;
 
 				s->pending_th = NULL;
 				s->pending = false;
+				ACCESS_ONCE(s->cur_th->q_ptrs->cede_gen) = s->cur_th->wake_gen;
 				ksched_enqueue_intr(core, KSCHED_INTR_CEDE);
 				ksched_run(core, th ? th->tid : 0);
-				if (s->cur_th) {
-					sched_disable_kthread(s->cur_th);
-					proc_put(s->cur_th->p);
-				}
+				s->last_th = s->cur_th;
 				s->cur_th = th;
 			} else {
 				s->wait = false;
@@ -554,8 +610,7 @@ void sched_poll(void)
 		/* check if a core went idle */
 		if (!s->wait && !s->idle && ksched_poll_idle(core)) {
 			if (s->cur_th) {
-				if (!s->cur_th->p->kill &&
-				    sched_try_fast_rewake(s->cur_th) == 0)
+				if (sched_try_fast_rewake(s->cur_th) == 0)
 					continue;
 				sched_disable_kthread(s->cur_th);
 				proc_put(s->cur_th->p);
@@ -594,7 +649,13 @@ int sched_add_core(struct proc *p)
  */
 int sched_attach_proc(struct proc *p)
 {
-	int i;
+	int i, ret;
+
+        if (p->sched_cfg.guaranteed_cores + nr_guaranteed >
+            sched_cores_nr) {
+                log_err("guaranteed cores exceeds total core count");
+                return -1;
+        }
 
 	p->active_thread_count = 0;
 	list_head_init(&p->idle_threads);
@@ -604,7 +665,13 @@ int sched_attach_proc(struct proc *p)
 		list_add_tail(&p->idle_threads, &p->threads[i].idle_link);
 	}
 
-	return sched_ops->proc_attach(p, &p->sched_cfg);
+	ret = sched_ops->proc_attach(p, &p->sched_cfg);
+	if (ret)
+		return ret;
+
+	nr_guaranteed += p->sched_cfg.guaranteed_cores;
+
+	return 0;
 }
 
 /**
@@ -614,12 +681,13 @@ int sched_attach_proc(struct proc *p)
 void sched_detach_proc(struct proc *p)
 {
 	sched_ops->proc_detach(p);
+	nr_guaranteed -= p->sched_cfg.guaranteed_cores;
 }
 
 static int sched_scan_node(int node)
 {
 	struct cpu_info *info;
-	int i, sib, ret = 0;
+	int i, sib, nr, ret = 0;
 
 	for (i = 0; i < cpu_count; i++) {
 		info = &cpu_info_tbl[i];
@@ -629,8 +697,15 @@ static int sched_scan_node(int node)
 		bitmap_set(socket_state[node].cores, i);
 
 		/* TODO: can only support hyperthread pairs */
-		if (bitmap_popcount(info->thread_siblings_mask, NCPU) != 2)
-			ret = -EINVAL;
+		nr = bitmap_popcount(info->thread_siblings_mask, NCPU);
+		if (nr != 2) {
+			if (nr > 2)
+				ret = -EINVAL;
+			if (nr == 1 && !cfg.noht)  {
+				log_err("HT not detected. Please run again with noht option");
+				ret = -EINVAL;
+			}
+		}
 
 		sib = bitmap_find_next_set(info->thread_siblings_mask,
 					   NCPU, 0);
@@ -639,8 +714,12 @@ static int sched_scan_node(int node)
 						   NCPU, sib + 1);
 
 		sched_siblings[i] = sib;
-		if (i < sib)
-			printf("[%d,%d]", i, sib);
+		if (i < sib) {
+			if (sib != NCPU)
+				printf("[%d,%d]", i, sib);
+			else
+				printf("[%d]", i);
+		}
 	}
 
 	return ret;
@@ -653,7 +732,7 @@ static int sched_scan_node(int node)
  */
 int sched_init(void)
 {
-	int i, sib;
+	int i;
 	bool valid = true;
 
 	bitmap_init(sched_allowed_cores, cpu_count, false);
@@ -678,7 +757,7 @@ int sched_init(void)
 	 */
 
 	for (i = 0; i < cpu_count; i++) {
-		if (cpu_info_tbl[i].package != 0 && sched_ops != &numa_ops)
+		if (cpu_info_tbl[i].package != managed_numa_node && sched_ops != &numa_ops)
 			continue;
 
 		if (allowed_cores_supplied &&
@@ -698,12 +777,13 @@ int sched_init(void)
 	 * third pass: reserve cores for iokernel and system
 	 */
 
-	i = bitmap_find_next_set(sched_allowed_cores, NCPU, 0);
-	sib = sched_siblings[i];
-	bitmap_clear(sched_allowed_cores, i);
-	bitmap_clear(sched_allowed_cores, sib);
-	sched_dp_core = sib;
-	sched_ctrl_core = i;
+	sched_ctrl_core = bitmap_find_next_set(sched_allowed_cores, NCPU, 0);
+	if (cfg.noht)
+		sched_dp_core = bitmap_find_next_set(sched_allowed_cores, NCPU, sched_ctrl_core + 1);
+	else
+		sched_dp_core = sched_siblings[sched_ctrl_core];
+	bitmap_clear(sched_allowed_cores, sched_ctrl_core);
+	bitmap_clear(sched_allowed_cores, sched_dp_core);
 	log_info("sched: dataplane on %d, control on %d",
 		 sched_dp_core, sched_ctrl_core);
 
@@ -713,6 +793,9 @@ int sched_init(void)
 			if (!bitmap_test(sched_allowed_cores, i))
 				continue;
 
+			if (sched_siblings[i] == NCPU)
+				continue;
+
 			bitmap_clear(sched_allowed_cores, sched_siblings[i]);
 		}
 	}
@@ -720,17 +803,6 @@ int sched_init(void)
 	/* generate polling arrays */
 	bitmap_for_each_set(sched_allowed_cores, NCPU, i)
 		sched_cores_tbl[sched_cores_nr++] = i;
-	bitmap_for_each_set(sched_allowed_cores, NCPU, i) {
-		bool found = false;
-		for (sib = 0; sib < sched_siblings_nr; sib++) {
-			if (sched_siblings[sched_siblings_tbl[sib]] == i) {
-				found = true;
-				break;
-			}
-		}
-		if (!found)
-			sched_siblings_tbl[sched_siblings_nr++] = i;
-	}
 
 	return 0;
 }

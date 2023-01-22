@@ -35,8 +35,8 @@ static struct rx_net_hdr *rx_prepend_rx_preamble(struct rte_mbuf *buf)
 	net_hdr->completion_data = (unsigned long)buf;
 	net_hdr->len = rte_pktmbuf_pkt_len(buf) - sizeof(*net_hdr);
 	net_hdr->rss_hash = buf->hash.rss;
-	masked_ol_flags = buf->ol_flags & PKT_RX_IP_CKSUM_MASK;
-	if (masked_ol_flags == PKT_RX_IP_CKSUM_GOOD)
+	masked_ol_flags = buf->ol_flags & RTE_MBUF_F_RX_IP_CKSUM_MASK;
+	if (masked_ol_flags == RTE_MBUF_F_RX_IP_CKSUM_GOOD)
 		net_hdr->csum_type = CHECKSUM_TYPE_UNNECESSARY;
 	else
 		net_hdr->csum_type = CHECKSUM_TYPE_NEEDED;
@@ -96,7 +96,7 @@ static void rx_one_pkt(struct rte_mbuf *buf)
 	int i, ret;
 
 	ptr_mac_hdr = rte_pktmbuf_mtod(buf, struct rte_ether_hdr *);
-	ptr_dst_addr = &ptr_mac_hdr->d_addr;
+	ptr_dst_addr = &ptr_mac_hdr->dst_addr;
 	log_debug("rx: rx packet with MAC %02" PRIx8 " %02" PRIx8 " %02"
 		  PRIx8 " %02" PRIx8 " %02" PRIx8 " %02" PRIx8,
 		  ptr_dst_addr->addr_bytes[0], ptr_dst_addr->addr_bytes[1],
@@ -120,6 +120,7 @@ static void rx_one_pkt(struct rte_mbuf *buf)
 
 		p = (struct proc *)data;
 		net_hdr = rx_prepend_rx_preamble(buf);
+		//log_info("rx_one_pkt got packet %d", net_hdr->len);
 		if (!rx_send_pkt_to_runtime(p, net_hdr)) {
 			STAT_INC(RX_UNICAST_FAIL, 1);
 			log_debug_ratelimited("rx: failed to send unicast packet to runtime");
@@ -205,7 +206,7 @@ static struct rte_mempool *rx_pktmbuf_pool_create_in_shm(const char *name,
 		uint16_t data_room_size, int socket_id)
 {
 	unsigned elt_size;
-	struct rte_pktmbuf_pool_private mbp_priv;
+	struct rte_pktmbuf_pool_private mbp_priv = {0};
 	struct rte_mempool *mp;
 	int ret, heap_id;
 	size_t pg_size, pg_shift, min_chunk_size, align, len;

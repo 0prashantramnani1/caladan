@@ -25,6 +25,7 @@
 #include <base/thread.h>
 #include <iokernel/control.h>
 
+#include "hw_timestamp.h"
 #include "defs.h"
 #include "sched.h"
 
@@ -37,7 +38,6 @@ struct lrpc_params lrpc_data_to_control_params;
 int data_to_control_efd;
 static struct lrpc_chan_out lrpc_control_to_data;
 static struct lrpc_chan_in lrpc_data_to_control;
-static int nr_guaranteed;
 
 #if 0
 struct iokernel_info *iok_info;
@@ -77,6 +77,7 @@ static int control_init_hwq(struct shm_region *r,
 	h->parity_bit_mask = hs->parity_bit_mask;
 	h->hwq_type = hs->hwq_type;
 	h->enabled = true;
+	h->queue_steering = h->hwq_type == HWQ_MLX5_QSTEERING;
 
 	if (!h->descriptor_table || !h->consumer_idx)
 		return -EINVAL;
@@ -125,12 +126,6 @@ static struct proc *control_create_proc(mem_key_t key, size_t len,
 
 	if (hdr.thread_count > NCPU || hdr.thread_count == 0)
 		goto fail;
-
-	if (hdr.sched_cfg.guaranteed_cores + nr_guaranteed >
-	    bitmap_popcount(sched_allowed_cores, NCPU)) {
-		log_err("guaranteed cores exceeds total core count");
-		goto fail;
-	}
 
 	/* copy arrays of threads, timers, and hwq specs */
 	threads = copy_shm_data(&reg, hdr.thread_specs, hdr.thread_count * sizeof(*threads));
@@ -217,8 +212,6 @@ static struct proc *control_create_proc(mem_key_t key, size_t len,
 	if (overflow_queue == NULL)
 		goto fail;
 
-	nr_guaranteed += hdr.sched_cfg.guaranteed_cores;
-
 	/* free temporary allocations */
 	free(threads);
 
@@ -237,9 +230,13 @@ fail:
 
 static void control_destroy_proc(struct proc *p)
 {
-	nr_guaranteed -= p->sched_cfg.guaranteed_cores;
+	int ret;
+
 	mem_unmap_shm(p->region.base);
 	free(p->overflow_queue);
+	ret = nl_remove_mac_address(&p->mac);
+	if (unlikely(ret))
+		log_warn("control: got ret %d when removing mac address", ret);
 	free(p);
 }
 
@@ -288,6 +285,12 @@ static void control_add_client(void)
 	if (!p) {
 		log_err("control: failed to create process '%d'", ucred.pid);
 		goto fail;
+	}
+
+	ret = nl_register_mac_address(&p->mac);
+	if (ret) {
+		log_err("control: failed to register mac address with netlink");
+		goto fail_destroy_proc;
 	}
 
 	if (!lrpc_send(&lrpc_control_to_data, DATAPLANE_ADD_CLIENT,
@@ -377,6 +380,8 @@ static void control_loop(void)
 		}
 
 		nrdy = select(maxfd + 1, &readset, NULL, NULL, NULL);
+		while (nrdy == -1 && errno == EINTR)
+			nrdy = select(maxfd + 1, &readset, NULL, NULL, NULL);
 		if (nrdy == -1) {
 			log_err("control: select() failed [%s]",
 				strerror(errno));

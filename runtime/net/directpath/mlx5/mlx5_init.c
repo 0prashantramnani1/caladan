@@ -22,12 +22,11 @@
 #include "mlx5.h"
 #include "mlx5_ifc.h"
 
-#define PORT_NUM 1 // TODO: make this dynamic
-
 static struct mlx5_txq txqs[NCPU];
 
 struct mlx5_rxq rxqs[NCPU];
 struct ibv_context *context;
+struct ibv_device_attr_ex device_attr;
 struct ibv_pd *pd;
 struct ibv_mr *mr_tx;
 struct ibv_mr *mr_rx;
@@ -84,10 +83,10 @@ static void mlx5_init_tx_segment(struct mlx5_txq *v, unsigned int idx)
 	segment = v->tx_qp_dv.sq.buf + idx * v->tx_qp_dv.sq.stride;
 	ctrl = segment;
 	eseg = segment + sizeof(*ctrl);
-	dpseg = (void *)eseg + (offsetof(struct mlx5_wqe_eth_seg, inline_hdr) & ~0xf);
+	dpseg = (void *)eseg + ((offsetof(struct mlx5_wqe_eth_seg, inline_hdr) + MLX5_ETH_L2_INLINE_HEADER_SIZE) & ~0xf);
 
 	size = (sizeof(*ctrl) / 16) +
-	       (offsetof(struct mlx5_wqe_eth_seg, inline_hdr)) / 16 +
+	       ((offsetof(struct mlx5_wqe_eth_seg, inline_hdr)) + MLX5_ETH_L2_INLINE_HEADER_SIZE) / 16 +
 	       sizeof(struct mlx5_wqe_data_seg) / 16;
 
 	/* set ctrl segment */
@@ -99,6 +98,7 @@ static void mlx5_init_tx_segment(struct mlx5_txq *v, unsigned int idx)
 	/* set eseg */
 	memset(eseg, 0, sizeof(struct mlx5_wqe_eth_seg));
 	eseg->cs_flags |= MLX5_ETH_WQE_L3_CSUM | MLX5_ETH_WQE_L4_CSUM;
+	eseg->inline_hdr_sz = htobe16(MLX5_ETH_L2_INLINE_HEADER_SIZE);
 
 	/* set dpseg */
 	dpseg->lkey = htobe32(mr_tx->lkey);
@@ -119,7 +119,7 @@ static struct mlx5dv_ctx_allocators dv_allocators = {
 	.free = simple_free,
 };
 
-static int mlx5_create_rxq(int index, struct mlx5_rxq *v)
+static int mlx5_create_rxq(int index, struct mlx5_rxq *v, bool use_rss)
 {
 	int i, ret;
 	unsigned char *buf;
@@ -168,32 +168,35 @@ static int mlx5_create_rxq(int index, struct mlx5_rxq *v)
 	if (ret)
 		return -ret;
 
-	struct ibv_wq *ind_tbl[1] = {v->rx_wq};
-	struct ibv_rwq_ind_table_init_attr rwq_attr = {0};
-	rwq_attr.ind_tbl = ind_tbl;
-	v->rwq_ind_table = ibv_create_rwq_ind_table(context, &rwq_attr);
-	if (!v->rwq_ind_table)
-		return -errno;
+	/* Create 1 QP per WQ if not using RSS */
+	if (!use_rss) {
+		struct ibv_wq *ind_tbl[1] = {v->rx_wq};
+		struct ibv_rwq_ind_table_init_attr rwq_attr = {0};
+		rwq_attr.ind_tbl = ind_tbl;
+		v->rwq_ind_table = ibv_create_rwq_ind_table(context, &rwq_attr);
+		if (!v->rwq_ind_table)
+			return -errno;
 
-	static unsigned char rss_key[40];
-	struct ibv_rx_hash_conf rss_cnf = {
-		.rx_hash_function = IBV_RX_HASH_FUNC_TOEPLITZ,
-		.rx_hash_key_len = ARRAY_SIZE(rss_key),
-		.rx_hash_key = rss_key,
-		.rx_hash_fields_mask = IBV_RX_HASH_SRC_IPV4 | IBV_RX_HASH_DST_IPV4 | IBV_RX_HASH_SRC_PORT_TCP | IBV_RX_HASH_DST_PORT_TCP,
-	};
+		static unsigned char null_rss[40];
+		struct ibv_rx_hash_conf rss_cnf = {
+				.rx_hash_function = IBV_RX_HASH_FUNC_TOEPLITZ,
+				.rx_hash_key_len = ARRAY_SIZE(null_rss),
+				.rx_hash_key = null_rss,
+				.rx_hash_fields_mask = IBV_RX_HASH_SRC_IPV4 | IBV_RX_HASH_DST_IPV4 | IBV_RX_HASH_SRC_PORT_TCP | IBV_RX_HASH_DST_PORT_TCP,
+			};
 
-	struct ibv_qp_init_attr_ex qp_ex_attr = {
-		.qp_type = IBV_QPT_RAW_PACKET,
-		.comp_mask = IBV_QP_INIT_ATTR_RX_HASH | IBV_QP_INIT_ATTR_IND_TABLE | IBV_QP_INIT_ATTR_PD,
-		.pd = pd,
-		.rwq_ind_tbl = v->rwq_ind_table,
-		.rx_hash_conf = rss_cnf,
-	};
+		struct ibv_qp_init_attr_ex qp_ex_attr = {
+			.qp_type = IBV_QPT_RAW_PACKET,
+			.comp_mask = IBV_QP_INIT_ATTR_RX_HASH | IBV_QP_INIT_ATTR_IND_TABLE | IBV_QP_INIT_ATTR_PD,
+			.pd = pd,
+			.rwq_ind_tbl = v->rwq_ind_table,
+			.rx_hash_conf = rss_cnf,
+		};
 
-	v->qp = ibv_create_qp_ex(context, &qp_ex_attr);
-	if (!v->qp)
-		return -errno;
+		v->qp = ibv_create_qp_ex(context, &qp_ex_attr);
+		if (!v->qp)
+			return -errno;
+	}
 
 	/* expose direct verbs objects */
 	struct mlx5dv_obj obj = {
@@ -285,7 +288,7 @@ static int mlx5_init_txq(int index, struct mlx5_txq *v)
 			.max_send_wr = SQ_NUM_DESC,
 			.max_recv_wr = 0,
 			.max_send_sge = 1,
-			.max_inline_data = 0, // TODO: should inline some data?
+			.max_inline_data = MLX5_ETH_L2_INLINE_HEADER_SIZE,
 		},
 		.qp_type = IBV_QPT_RAW_PACKET,
 		.sq_sig_all = 1,
@@ -303,7 +306,7 @@ static int mlx5_init_txq(int index, struct mlx5_txq *v)
 	struct ibv_qp_attr qp_attr;
 	memset(&qp_attr, 0, sizeof(qp_attr));
 	qp_attr.qp_state = IBV_QPS_INIT;
-	qp_attr.port_num = 1;
+	qp_attr.port_num = PORT_NUM;
 	ret = ibv_modify_qp(v->tx_qp, &qp_attr, IBV_QP_STATE | IBV_QP_PORT);
 	if (ret)
 		return -ret;
@@ -350,20 +353,11 @@ static int mlx5_init_txq(int index, struct mlx5_txq *v)
 	return 0;
 }
 
-static struct net_driver_ops mlx5_net_ops = {
-	.rx_batch = mlx5_gather_rx,
-	.tx_single = mlx5_transmit_one,
-	.steer_flows = mlx5_steer_flows,
-	.register_flow = mlx5_register_flow,
-	.deregister_flow = mlx5_deregister_flow,
-	.get_flow_affinity = mlx5_get_flow_affinity,
-};
-
 /*
  * mlx5_init - intialize all TX/RX queues
  */
-int mlx5_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
-	             unsigned int nr_rxq, unsigned int nr_txq)
+int mlx5_common_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
+	             unsigned int nr_rxq, unsigned int nr_txq, bool use_rss)
 {
 	int i, ret;
 
@@ -383,7 +377,7 @@ int mlx5_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
 	}
 
 	for (i = 0; dev_list[i]; i++) {
-		if (strncmp(ibv_get_device_name(dev_list[i]), "mlx5_3", 6))
+		if (strncmp(ibv_get_device_name(dev_list[i]), "mlx5_2", 6))
 			continue;
 
 		if (!cfg_pci_addr_specified)
@@ -404,11 +398,12 @@ int mlx5_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
 		return -1;
 	}
 
-	attr.flags = MLX5DV_CONTEXT_FLAGS_DEVX;
+	attr.flags = use_rss ? 0 : MLX5DV_CONTEXT_FLAGS_DEVX;
 	context = mlx5dv_open_device(dev_list[i], &attr);
 	if (!context) {
 		log_err("mlx5_init: Couldn't get context for %s (errno %d)",
 			ibv_get_device_name(dev_list[i]), errno);
+		ibv_free_device_list(dev_list);
 		return -1;
 	}
 
@@ -427,6 +422,12 @@ int mlx5_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
 		return -1;
 	}
 
+	ret = ibv_query_device_ex(context, NULL, &device_attr);
+	if (ret) {
+		log_err("mlx5_init: failed to query device attributes");
+		return -1;
+	}
+
 	/* Register memory for TX buffers */
 	mr_tx = ibv_reg_mr(pd, net_tx_buf_mp.buf, net_tx_buf_mp.len, IBV_ACCESS_LOCAL_WRITE);
 	if (!mr_tx) {
@@ -441,16 +442,12 @@ int mlx5_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
 	}
 
 	for (i = 0; i < nr_rxq; i++) {
-		ret = mlx5_create_rxq(i, &rxqs[i]);
+		ret = mlx5_create_rxq(i, &rxqs[i], use_rss);
 		if (ret)
 			return ret;
 
 		rxq_out[i] = &rxqs[i].rxq;
 	}
-
-	ret = mlx5_init_flows(nr_rxq);
-	if (ret)
-		return ret;
 
 	for (i = 0; i < nr_txq; i++) {
 		ret = mlx5_init_txq(i, &txqs[i]);
@@ -459,8 +456,6 @@ int mlx5_init(struct hardware_q **rxq_out, struct direct_txq **txq_out,
 
 		txq_out[i] = &txqs[i].txq;
 	}
-
-	net_ops = mlx5_net_ops;
 
 	return 0;
 }

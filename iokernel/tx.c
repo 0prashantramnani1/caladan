@@ -53,7 +53,7 @@ static void tx_prepare_tx_mbuf(struct rte_mbuf *buf,
 	/* initialize mbuf to point to net_hdr->payload */
 	buf->buf_addr = (char *)net_hdr->payload;
 	page_number = PGN_2MB((uintptr_t)buf->buf_addr - (uintptr_t)p->region.base);
-	buf->buf_physaddr = p->page_paddrs[page_number] + PGOFF_2MB(buf->buf_addr);
+	buf->buf_iova = p->page_paddrs[page_number] + PGOFF_2MB(buf->buf_addr);
 	buf->data_off = 0;
 	rte_mbuf_refcnt_set(buf, 1);
 
@@ -64,13 +64,13 @@ static void tx_prepare_tx_mbuf(struct rte_mbuf *buf,
 	buf->ol_flags = 0;
 	if (net_hdr->olflags != 0) {
 		if (net_hdr->olflags & OLFLAG_IP_CHKSUM)
-			buf->ol_flags |= PKT_TX_IP_CKSUM;
+			buf->ol_flags |= RTE_MBUF_F_TX_IP_CKSUM;
 		if (net_hdr->olflags & OLFLAG_TCP_CHKSUM)
-			buf->ol_flags |= PKT_TX_TCP_CKSUM;
+			buf->ol_flags |= RTE_MBUF_F_TX_TCP_CKSUM;
 		if (net_hdr->olflags & OLFLAG_IPV4)
-			buf->ol_flags |= PKT_TX_IPV4;
+			buf->ol_flags |= RTE_MBUF_F_TX_IPV4;
 		if (net_hdr->olflags & OLFLAG_IPV6)
-			buf->ol_flags |= PKT_TX_IPV6;
+			buf->ol_flags |= RTE_MBUF_F_TX_IPV6;
 
 		buf->l4_len = sizeof(struct rte_tcp_hdr);
 		buf->l3_len = sizeof(struct rte_ipv4_hdr);

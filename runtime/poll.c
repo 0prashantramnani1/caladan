@@ -193,6 +193,7 @@ void poll_disarm(poll_trigger_t *t)
 		list_del(&t->link);
 		t->triggered = false;
 	}
+	w->counter--;
 	spin_unlock_np(&w->lock);
 
 	t->waiter = NULL;
@@ -238,7 +239,6 @@ int poll_cb_once_nonblock(poll_waiter_t *w)
 	 * and process all triggered events, and return.
 	 */
 	while (true) {
-
 		spin_lock_np(&w->lock);
 
 		if (!w->counter) {

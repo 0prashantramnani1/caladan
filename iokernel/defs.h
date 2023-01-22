@@ -15,7 +15,6 @@
 #include <iokernel/control.h>
 #include <net/ethernet.h>
 
-#include "mlx.h"
 #include "ref.h"
 
 /* #define STATS 1 */
@@ -41,7 +40,7 @@ extern struct iokernel_cfg cfg;
  */
 
 #define IOKERNEL_MAX_PROC		1024
-#define IOKERNEL_NUM_MBUFS		(8192 * 16)
+#define IOKERNEL_NUM_MBUFS		(8192 * 16)/2
 #define IOKERNEL_NUM_COMPLETIONS	32767
 #define IOKERNEL_OVERFLOW_BATCH_DRAIN	64
 #define IOKERNEL_TX_BURST_SIZE		64
@@ -49,6 +48,7 @@ extern struct iokernel_cfg cfg;
 #define IOKERNEL_RX_BURST_SIZE		64
 #define IOKERNEL_CONTROL_BURST_SIZE	4
 #define IOKERNEL_POLL_INTERVAL		10
+
 
 /*
  * Process Support
@@ -58,6 +58,7 @@ struct proc;
 
 struct hwq {
 	bool			enabled;
+	bool			queue_steering;
 	void			*descriptor_table;
 	uint32_t		*consumer_idx;
 	uint32_t		descriptor_log_size;
@@ -65,15 +66,19 @@ struct hwq {
 	uint32_t		parity_byte_offset;
 	uint32_t		parity_bit_mask;
 	uint32_t		hwq_type;
-
 	uint32_t		last_tail;
 	uint32_t		last_head;
-
 	uint64_t		busy_since;
 };
 
 struct timer {
 	uint64_t		*next_tsc;
+};
+
+struct thread_metrics {
+	uint32_t		uthread_elapsed_us;
+	uint32_t		rcu_gen;
+	bool			work_pending;
 };
 
 struct thread {
@@ -83,6 +88,7 @@ struct thread {
 	struct lrpc_chan_in	txpktq;
 	struct lrpc_chan_in	txcmdq;
 	pid_t			tid;
+	uint32_t		last_yield_rcu_gen;
 	struct q_ptrs		*q_ptrs;
 	uint32_t		last_rq_head;
 	uint32_t		last_rq_tail;
@@ -92,6 +98,7 @@ struct thread {
 	unsigned int		core;
 	unsigned int		at_idx;
 	unsigned int		ts_idx;
+	uint64_t		wake_gen;
 	union {
 		struct {
 			struct hwq	directpath_hwq;
@@ -101,6 +108,9 @@ struct thread {
 	};
 	struct timer		timer_heap;
 	struct list_node	idle_link;
+
+	/* useful metrics for scheduling policies */
+	struct thread_metrics	metrics;
 };
 
 static inline bool hwq_busy(struct hwq *h, uint32_t cq_idx)
@@ -144,12 +154,6 @@ struct proc {
 
 	/* network data */
 	struct eth_addr		mac;
-
-	/* Unique identifier -- never recycled across runtimes*/
-#ifdef MLX
-	uint32_t		lkey;
-	void			*mr;
-#endif
 
 	/* Overfloq queue for completion data */
 	size_t max_overflows;
@@ -251,14 +255,13 @@ enum {
  */
 struct dataplane {
 	uint8_t			port;
-	bool			is_mlx;
 	struct rte_mempool	*rx_mbuf_pool;
-
-	struct shm_region		ingress_mbuf_region;
+	struct shm_region	ingress_mbuf_region;
 
 	struct proc		*clients[IOKERNEL_MAX_PROC];
 	int			nr_clients;
 	struct rte_hash		*mac_to_proc;
+	struct rte_device	*device;
 };
 
 extern struct dataplane dp;
@@ -344,6 +347,9 @@ extern char *nic_pci_addr_str;
 extern struct pci_addr nic_pci_addr;
 extern bool allowed_cores_supplied;
 extern DEFINE_BITMAP(input_allowed_cores, NCPU);
+extern char **dpdk_argv;
+extern int dpdk_argc;
+extern int managed_numa_node;
 
 /*
  * dataplane RX/TX functions

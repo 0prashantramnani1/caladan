@@ -69,31 +69,15 @@ neper_obj = neper/tcp_stream_main.o neper/tcp_stream.o neper/stream.o $(lib)
 neper_targets = neper/tcp_stream
 
 # pcm lib
-PCM_DEPS = $(ROOT_PATH)/deps/pcm/libPCM.a
+PCM_DEPS = $(ROOT_PATH)/deps/pcm/build/src/libpcm.a
 PCM_LIBS = -lm -lstdc++
 
 # dpdk libs
-DPDK_LIBS= -L$(DPDK_PATH)/build/lib
-DPDK_LIBS += -Wl,-whole-archive -lrte_pmd_e1000 -Wl,-no-whole-archive
-DPDK_LIBS += -Wl,-whole-archive -lrte_pmd_ixgbe -Wl,-no-whole-archive
-DPDK_LIBS += -Wl,-whole-archive -lrte_mempool_ring -Wl,-no-whole-archive
-DPDK_LIBS += -Wl,-whole-archive -lrte_pmd_tap -Wl,-no-whole-archive
-DPDK_LIBS += -ldpdk
-DPDK_LIBS += -lrte_eal
-DPDK_LIBS += -lrte_ethdev
-DPDK_LIBS += -lrte_hash
-DPDK_LIBS += -lrte_mbuf
-DPDK_LIBS += -lrte_mempool
-DPDK_LIBS += -lrte_mempool_stack
-DPDK_LIBS += -lrte_ring
+DPDK_LIBS=$(shell PKG_CONFIG_PATH=$(PKG_CONFIG_PATH) pkg-config --libs --static libdpdk)
+
 # additional libs for running with Mellanox NICs
 ifeq ($(CONFIG_MLX5),y)
-DPDK_LIBS += $(MLX5_LIBS) -lrte_pmd_mlx5
 $(iokernel_obj): INC += $(MLX5_INC)
-else
-ifeq ($(CONFIG_MLX4),y)
-DPDK_LIBS += -lrte_pmd_mlx4 -libverbs -lmlx4
-endif
 endif
 
 # must be first
@@ -147,6 +131,10 @@ sparse: $(src)
 .PHONY: submodules
 submodules:
 	$(ROOT_PATH)/build/init_submodules.sh
+
+.PHONY: submodules-clean
+submodules-clean:
+	$(ROOT_PATH)/build/init_submodules.sh clean
 
 .PHONY: clean
 clean:

@@ -12,6 +12,7 @@
 #include <runtime/tcp.h>
 
 
+// Bitmap for different event types (based on libevent)
 #define SEV_TIMEOUT      0x01
 #define SEV_READ         0x02
 #define SEV_WRITE        0x04
@@ -19,6 +20,7 @@
 #define SEV_PERSIST      0x10
 #define SEV_ET           0x20
 
+// Maximum number of callbacks to trigger in a single call
 #define MAX_AT_ONCE	100
 
 typedef void(* sh_event_callback_fn) (void * args);

@@ -32,6 +32,7 @@
 #include <linux/smp.h>
 #include <linux/uaccess.h>
 #include <linux/signal.h>
+#include <linux/version.h>
 
 #include "ksched.h"
 #include "../iokernel/pmc.h"
@@ -55,6 +56,28 @@ struct ksched_percpu {
 
 /* per-cpu data to coordinate context switching and signal delivery */
 static DEFINE_PER_CPU(struct ksched_percpu, kp);
+
+enum {
+	PARKED = 0,
+	UNPARKED
+};
+
+void mark_task_parked(struct task_struct *tsk)
+{
+	/* borrow the trace field here which is origally used by Ftrace */
+	tsk->trace = PARKED;
+}
+
+bool try_mark_task_unparked(struct task_struct *tsk) {
+	bool success = false;
+
+	if (tsk->trace == PARKED) {
+		success = true;
+		tsk->trace = UNPARKED;
+	}
+
+	return success;
+}
 
 /**
  * ksched_measure_pmc - read a performance counter
@@ -94,6 +117,8 @@ static void ksched_next_tid(struct ksched_percpu *kp, int cpu, pid_t tid)
 {
 	struct task_struct *p;
 	int ret;
+	unsigned long flags;
+	bool already_running;
 
 	/* release previous task */
 	if (kp->running_task) {
@@ -111,14 +136,23 @@ static void ksched_next_tid(struct ksched_percpu *kp, int cpu, pid_t tid)
 		return;
 	}
 
-	if (WARN_ON_ONCE(p->on_cpu || p->state == TASK_WAKING ||
-			 p->state == TASK_RUNNING)) {
+	raw_spin_lock_irqsave(&p->pi_lock, flags);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,14,0)
+	already_running = p->on_cpu || p->state == TASK_WAKING ||
+			  p->state == TASK_RUNNING || !try_mark_task_unparked(p);
+#else
+	already_running = p->on_cpu || p->__state == TASK_WAKING ||
+			  task_is_running(p) || !try_mark_task_unparked(p);
+#endif
+	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
+	if (unlikely(already_running)) {
 		rcu_read_unlock();
 		return;
 	}
 
 	ret = set_cpus_allowed_ptr(p, cpumask_of(cpu));
 	if (unlikely(ret)) {
+		mark_task_parked(p);
 		rcu_read_unlock();
 		return;
 	}
@@ -205,6 +239,22 @@ static int __cpuidle ksched_idle(struct cpuidle_device *dev,
 	return index;
 }
 
+static inline long get_granted_core_id(void)
+{
+	struct ksched_percpu *p = this_cpu_ptr(&kp);
+
+	if (unlikely(p->running_task == NULL ||
+		     p->running_task->pid != task_pid_vnr(current))) {
+		/* The thread is waken up by a user-sent signal instead of
+		 * the iokernel. In this case no core was granted. We should
+		 * put the thread back into sleep immediately after handling
+		 * the signal. */
+		return -ERESTARTSYS;
+	}
+
+	return smp_processor_id();
+}
+
 static long ksched_park(void)
 {
 	struct ksched_percpu *p;
@@ -212,7 +262,6 @@ static long ksched_park(void)
 	unsigned long gen;
 	pid_t tid;
 	int cpu;
-	sigset_t em;
 
 	cpu = get_cpu();
 	p = this_cpu_ptr(&kp);
@@ -225,10 +274,6 @@ static long ksched_park(void)
 		put_cpu();
 		return -ERESTARTSYS;
 	}
-
-	/* clear blocked signals */
-	sigemptyset(&em);
-	WARN_ON_ONCE(sigprocmask(SIG_SETMASK, &em, NULL));
 
 	/* check if a new request is available yet */
 	gen = smp_load_acquire(&s->gen);
@@ -261,18 +306,20 @@ static long ksched_park(void)
 park:
 	/* put this task to sleep and reschedule so the next task can run */
 	__set_current_state(TASK_INTERRUPTIBLE);
+	mark_task_parked(current);
 	schedule();
 	__set_current_state(TASK_RUNNING);
-	return smp_processor_id();
+	return get_granted_core_id();
 }
 
 static long ksched_start(void)
 {
 	/* put this task to sleep and reschedule so the next task can run */
 	__set_current_state(TASK_INTERRUPTIBLE);
+	mark_task_parked(current);
 	schedule();
 	__set_current_state(TASK_RUNNING);
-	return smp_processor_id();
+	return get_granted_core_id();
 }
 
 static void ksched_deliver_signal(struct ksched_percpu *p, unsigned int signum)

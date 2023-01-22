@@ -2,25 +2,24 @@ use std::arch::asm;
 
 #[inline]
 pub fn cpu_relax() {
-    unsafe { asm!("pause", options(att_syntax)) };
+    unsafe { core::arch::x86_64::_mm_pause() }
 }
+
 #[inline]
 pub fn cpu_serialize() {
-    unsafe { asm!("cpuid", out("rax") _, out("rcx") _, out("rdx")_, options(att_syntax)) };
+    unsafe {
+        core::arch::x86_64::__cpuid(0);
+    }
 }
+
 #[inline]
 pub fn rdtsc() -> u64 {
-    let a: u32;
-    let d: u32;
-    unsafe { asm!("rdtsc", out("eax") a, out("edx") d, options(att_syntax)) };
-    (a as u64) | ((d as u64) << 32)
+    unsafe { core::arch::x86_64::_rdtsc() }
 }
+
 #[inline]
 pub fn rdtscp() -> (u64, u32) {
-    let a: u32;
-    let d: u32;
-    let c: u32;
-    unsafe { asm!("rdtscp", out("eax") a, out("edx") d, out("ecx") c, options(att_syntax)) };
-
-    ((a as u64) | ((d as u64) << 32), c)
+    let mut aux: u32 = 0;
+    let tsc = unsafe { core::arch::x86_64::__rdtscp(&mut aux as *mut u32) };
+    (tsc, aux)
 }
