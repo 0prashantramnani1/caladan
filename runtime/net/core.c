@@ -325,7 +325,8 @@ struct mbuf *net_tx_alloc_mbuf_len(unsigned int len)
 	preempt_enable();
 
 	buf = (unsigned char *)m + MBUF_HEAD_LEN;
-	mbuf_init(m, buf, MAX(len, net_get_mtu()), MBUF_DEFAULT_HEADROOM);
+	//mbuf_init(m, buf, MAX(len, net_get_mtu()), MBUF_DEFAULT_HEADROOM);
+	mbuf_init(m, buf, net_get_mtu(), MBUF_DEFAULT_HEADROOM);
 	m->csum_type = CHECKSUM_TYPE_NEEDED;
 	m->txflags = 0;
 	m->release_data = 0;
