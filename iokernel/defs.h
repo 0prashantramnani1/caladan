@@ -17,7 +17,7 @@
 
 #include "ref.h"
 
-/* #define STATS 1 */
+#define STATS 1
 
 /*
  * configuration parameters
@@ -44,7 +44,7 @@ extern struct iokernel_cfg cfg;
 #define IOKERNEL_NUM_COMPLETIONS	32767
 #define IOKERNEL_OVERFLOW_BATCH_DRAIN	64
 #define IOKERNEL_TX_BURST_SIZE		64
-#define IOKERNEL_CMD_BURST_SIZE		1024 /// NET TX ISSUE
+#define IOKERNEL_CMD_BURST_SIZE		64 /// NET TX ISSUE
 #define IOKERNEL_RX_BURST_SIZE		64
 #define IOKERNEL_CONTROL_BURST_SIZE	4
 #define IOKERNEL_POLL_INTERVAL		10
@@ -224,7 +224,7 @@ static inline void unpoll_thread(struct thread *th)
 /*
  * Communication between control plane and data-plane in the I/O kernel
  */
-#define CONTROL_DATAPLANE_QUEUE_SIZE	2048 // NET TX ISSUe
+#define CONTROL_DATAPLANE_QUEUE_SIZE	128 // NET TX ISSUe
 struct lrpc_params {
 	struct lrpc_msg *buffer;
 	uint32_t *wb;

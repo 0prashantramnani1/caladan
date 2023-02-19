@@ -52,9 +52,11 @@ static inline bool lrpc_send(struct lrpc_chan_out *chan, uint64_t cmd,
 
 	assert(!(cmd & LRPC_DONE_PARITY));
 
-	if (unlikely(chan->send_head - chan->send_tail >= chan->size))
+	if (unlikely(chan->send_head - chan->send_tail >= chan->size)) {
+		// printf("GREATER than chan size\n");
 		return __lrpc_send(chan, cmd, payload);
-
+	}
+	
 	dst = &chan->tbl[chan->send_head & (chan->size - 1)];
 	cmd |= (chan->send_head++ & chan->size) ? 0 : LRPC_DONE_PARITY;
 	dst->payload = payload;

@@ -15,7 +15,8 @@
 
 /* ephemeral port definitions (IANA suggested range) */
 #define MIN_EPHEMERAL		49152
-#define MAX_EPHEMERAL		65535
+// #define MAX_EPHEMERAL		65535
+#define MAX_EPHEMERAL		100005
 
 /* a seed value for transport handler table hashing calculations */
 static uint32_t trans_seed;

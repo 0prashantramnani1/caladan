@@ -15,8 +15,10 @@ bool __lrpc_send(struct lrpc_chan_out *chan, uint64_t cmd,
 	assert(chan->send_head - chan->send_tail == chan->size);
 
 	chan->send_tail = load_acquire(chan->recv_head_wb);
-        if (chan->send_head - chan->send_tail == chan->size)
+        if (chan->send_head - chan->send_tail == chan->size) {
+				printf("Returning FAlse\n");
                 return false;
+		}
 
 	dst = &chan->tbl[chan->send_head & (chan->size - 1)];
 	dst->payload = payload;

@@ -903,16 +903,19 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 
 	*mout = NULL;
 	spin_lock_np(&c->lock);
-
+	// printf("1.1\n");
 	if (!c->rx_closed && (c->rx_exclusive || list_empty(&c->rxq)) && c->non_blocking) {
 		spin_unlock_np(&c->lock);
-		return -11;
+		return 0;
 	}
-
+	// printf("1.2\n");
 	/* block until there is an actionable event */
+	if(list_empty(&c->rxq)) {
+		printf("LIST IS EMPTY\n");
+	}
 	while (!c->rx_closed && (c->rx_exclusive || list_empty(&c->rxq)))
 		waitq_wait(&c->rx_wq, &c->lock);
-
+	// printf("1.3\n");
 	/* is the socket closed? */
 	if (c->rx_closed) {
 		tcp_close(c);
@@ -920,7 +923,7 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 		spin_unlock_np(&c->lock);
 		return -c->err;
 	}
-
+	// printf("1.4\n");
 	/* pop off the mbufs that will be read */
 	while (readlen < len) {
 		m = list_top(&c->rxq, struct mbuf, link);
@@ -992,8 +995,9 @@ ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len)
 	list_head_init(&q);
 
 	/* wait for data to become available */
+	// printf("1\n");
 	ret = tcp_read_wait(c, len, &q, &m);
-
+	// printf("2\n");
 	/* check if connection was closed */
 	if (ret <= 0)
 		return ret;
