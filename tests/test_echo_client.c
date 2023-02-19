@@ -16,10 +16,10 @@
 static void main_handler(void *arg)
 {
 	struct netaddr laddr, raddr;
-	laddr.ip = 2154748472;
+	laddr.ip = 168427778;
 	laddr.port = 8081;
 
-	raddr.ip = 2154748472;
+	raddr.ip = 168427777;
 	raddr.port = 8082;
 	
 	printf("DEBUG 1\n");
@@ -35,7 +35,12 @@ static void main_handler(void *arg)
 
 	//while ((buff[n++] = getchar()) != '\n');
 	printf("message: %s  size: %d \n", buff, sizeof(buff));
-	ssize_t size_sent = udp_write_to(*c, (void*)&buff , sizeof(buff), &raddr);
+	ssize_t size_sent;
+	for(int i=0;i<1000;i++) {
+		printf("sending\n");
+		size_sent = udp_write_to(*c, (void*)&buff , sizeof(buff), &raddr);
+		usleep(500);
+	}
 	//ssize_t size_sent_again = udp_send((void *)&buff, sizeof(buff), laddr, raddr);
 
 	if(size_sent < 0) {

@@ -72,14 +72,17 @@ static void do_client_poll(int id) {
     
 
     stop_us = microtime() + seconds * ONE_SECOND;
+//     struct timespec sleeptime = {.tv_nsec=500};
 
     while (microtime() < stop_us) {
         for(int i=0;i<nflows;i++) {
-            ret = tcp_write(c[i], buf, payload_len);    
-            if (ret != payload_len) {
-                log_err("index: %d tcp_write() failed, ret = %ld",i, ret);
-                // break;
-            }
+            ret = tcp_write(c[i], buf, payload_len);
+        //     nanosleep(100);    
+        //     usleep(10);
+        //     if (ret != payload_len) {
+        //         log_err("index: %d tcp_write() failed, ret = %ld",i, ret);
+        //         // break;
+        //     }
         }
     }
 

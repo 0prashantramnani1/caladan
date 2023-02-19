@@ -9,13 +9,10 @@
 #include <base/stddef.h>
 #include <base/log.h>
 #include <base/time.h>
-#include <base/list.h>
-#include <base/thread.h>
 #include <net/ip.h>
 #include <runtime/runtime.h>
 #include <runtime/sync.h>
 #include <runtime/tcp.h>
-#include <runtime/poll.h>
 
 #define NETPERF_PORT	8000
 
@@ -30,316 +27,130 @@ static int depth;
 #define BUF_SIZE	32768
 
 struct client_rr_args {
-        waitgroup_t *wg;
-        uint64_t reqs;
-        int id;
+	waitgroup_t *wg;
+	uint64_t reqs;
 };
 
 static void client_worker(void *arg)
 {
-        unsigned char buf[BUF_SIZE];
-        struct client_rr_args *args = (struct client_rr_args *)arg;
-        tcpconn_t *c;
-        struct netaddr laddr;
-        ssize_t ret;
-        int budget = depth;
+	unsigned char buf[BUF_SIZE];
+	struct client_rr_args *args = (struct client_rr_args *)arg;
+	tcpconn_t *c;
+	struct netaddr laddr;
+	ssize_t ret;
+	int budget = depth;
 
-        /* local IP + ephemeral port */
-        laddr.ip = 0;
-        laddr.port = 0;
+	/* local IP + ephemeral port */
+	laddr.ip = 168427778;
+	laddr.port = 0;
 
-        memset(buf, 0xAA, payload_len);
-        raddr.port = NETPERF_PORT + args->id;
-        ret = tcp_dial(laddr, raddr, &c);
-        timer_sleep(1*ONE_SECOND);
-        if (ret) {
-                log_err("tcp_dial() failed, ret = %ld", ret);
-                goto done;
-        }
+	raddr.ip = 168427777;
+	memset(buf, 0xAB, payload_len);
 
-        while (microtime() < stop_us) {
-                unsigned char read_buf[BUF_SIZE];
-                while (budget) {
-                        ret = tcp_write(c, buf, payload_len);
-                        if (ret != payload_len) {
-                                printf("error in writing \n");
-                                log_err("tcp_write() failed, ret = %ld", ret);
-                                break;
-                        }
-                        budget--;
-                }
-                ret = tcp_read(c, read_buf, payload_len * depth);
+	while(ret = tcp_dial(laddr, raddr, &c));
+	if (ret) {
+		log_err("tcp_dial() failed, ret = %ld", ret);
+		goto done;
+	}
 
-                if(read_buf[0] != buf[0]) {
-                        printf("client_worker: read and write buf are not same\n");
-                }
-                //else {
-                //      printf("client_worker: they don't match\n");
-                //}
+	while (microtime() < stop_us) {
+		while (budget) {
+			ret = tcp_write(c, buf, payload_len);
+			if (ret != payload_len) {
+				log_err("tcp_write() failed, ret = %ld", ret);
+				break;
+			}
+			budget--;
+		}
 
-                //printf("client_worker: %d\n", read_buf[0]);
-                if (ret <= 0 || ret % payload_len != 0) {
-                        log_err("tcp_read() failed, ret = %ld", ret);
-                        break;
-                }
+		ret = tcp_read(c, buf, payload_len * depth);
+		if (ret <= 0 || ret % payload_len != 0) {
+			log_err("tcp_read() failed, ret = %ld", ret);
+			break;
+		}
 
-                budget += ret / payload_len;
-                args->reqs += ret / payload_len;
-        }
+		budget += ret / payload_len;
+		args->reqs += ret / payload_len;
+	}
 
-        log_info("close port %hu", tcp_local_addr(c).port);
-        tcp_abort(c);
-        tcp_close(c);
+	log_info("close port %hu", tcp_local_addr(c).port);
+	// tcp_abort(c);
+	tcp_close(c);
 done:
-        waitgroup_done(args->wg);
+	waitgroup_done(args->wg);
 }
 
 static void do_client(void *arg)
 {
-        waitgroup_t wg;
-        struct client_rr_args *arg_tbl;
-        int i, ret;
-        uint64_t reqs = 0;
+	waitgroup_t wg;
+	struct client_rr_args *arg_tbl;
+	int i, ret;
+	uint64_t reqs = 0;
 
-        log_info("client-mode TCP: %d workers, %ld bytes, %d seconds %d depth",
-                 nworkers, payload_len, seconds, depth);
+	log_info("client-mode TCP: %d workers, %ld bytes, %d seconds %d depth",
+		 nworkers, payload_len, seconds, depth);
 
-        arg_tbl = calloc(nworkers*10, sizeof(*arg_tbl));
-        BUG_ON(!arg_tbl);
+	arg_tbl = calloc(nworkers, sizeof(*arg_tbl));
+	BUG_ON(!arg_tbl);
 
-        waitgroup_init(&wg);
-        waitgroup_add(&wg, nworkers*10);
-        stop_us = microtime() + seconds * ONE_SECOND;
-        for (i = 0; i < nworkers; i++) {
-                for(int j=0;j<10;j++) {
-                        int k = i*10 + j;
-                        arg_tbl[k].wg = &wg;
-                        arg_tbl[k].reqs = 0;
-                        arg_tbl[k].id = i;
-                        ret = thread_spawn(client_worker, &arg_tbl[k]);
-                        timer_sleep(1*ONE_SECOND);
-                        BUG_ON(ret);
-                }
-        }
-
-        waitgroup_wait(&wg);
-
-        for (i = 0; i < nworkers*10; i++)
-                reqs += arg_tbl[i].reqs;
-
-        log_info("measured %f reqs/s", (double)reqs / seconds);
-}
-
-static void do_client_poll(int id)
-{
-        int i;
-        uint64_t reqs = 0;
-
-        tcpconn_t **c;
-        c = (tcpconn_t **)malloc(10*sizeof(tcpconn_t *));
-        struct netaddr laddr;
-        ssize_t ret;
-        int budget = depth;
-
-        /* local IP + ephemeral port */
-        laddr.ip = 0;
-        laddr.port = 0;
-
-
-        poll_waiter_t *w;
-        ret = create_waiter(&w);
-
-	for(int j=0;j<10;j++) { // Connections per thread
-		raddr.port = NETPERF_PORT + id;
-		ret = tcp_dial(laddr, raddr, &c[j]);
-		timer_sleep(ONE_SECOND);
-		tcp_set_nonblocking(c[j], 1);
-
-		//Creating a trigger for this socket
-		poll_trigger_t *t;
-		ret = create_trigger(&t);
-
-		struct list_head *h;
-		h = tcp_get_triggers(c[j]);
-
-		unsigned char buf[BUF_SIZE];
-		memset(buf, 0xAA, payload_len);
-
-		tcp_read_arg_t *read_arg;
-		read_arg = (tcp_read_arg_t *)malloc(sizeof(tcp_read_arg_t)); 
-		read_arg->c = c[j];
-		read_arg->buf = buf;
-		read_arg->len = BUF_SIZE;
-
-		sh_event_callback_fn cb = &tcp_read_poll;
-
-		//register trigger with a waiter
-		poll_arm_w_sock(w, h, t, SEV_READ, cb, read_arg, c[j], -7);
-
-		ret = tcp_write(c[j], buf, payload_len);
-		if (ret != payload_len) {
-			printf("error in writing \n");
-			log_err("tcp_write() failed, ret = %ld", ret);
-			break;
-		}
-
+	waitgroup_init(&wg);
+	waitgroup_add(&wg, nworkers);
+	stop_us = microtime() + seconds * ONE_SECOND;
+	for (i = 0; i < nworkers; i++) {
+		arg_tbl[i].wg = &wg;
+		arg_tbl[i].reqs = 0;
+		ret = thread_spawn(client_worker, &arg_tbl[i]);
+		BUG_ON(ret);
 	}
 
-        stop_us = microtime() + seconds * ONE_SECOND;
-        while (microtime() < stop_us) {
-		poll_cb_once(w);
-	}
-	for(int i=0;i<10;i++) {
-        	tcp_abort(c[i]);
-        	tcp_close(c[i]);
-        	log_info("close port %hu", tcp_local_addr(c[i]).port);
-	}
+	waitgroup_wait(&wg);
+
+	for (i = 0; i < nworkers; i++)
+		reqs += arg_tbl[i].reqs;
+
+	log_info("measured %f reqs/s", (double)reqs / seconds);
 }
 
 static void server_worker(void *arg)
 {
-	printf("new server thread started\n");
 	unsigned char buf[BUF_SIZE];
 	tcpconn_t *c = (tcpconn_t *)arg;
 	ssize_t ret;
-	tcp_set_nonblocking(c, 1);
 
-	
-	//Creating a waiter for this thread	
-	poll_waiter_t *w;
-	ret = create_waiter(&w);
-
-	//Creating a trigger for this socket
-	poll_trigger_t *t;
-	ret = create_trigger(&t);
-	
-	struct list_head *h;
-      	h = tcp_get_triggers(c);
-
-	//register trigger with a waiter
-	poll_arm_w_sock(w, h, t, SEV_READ, NULL, NULL, c, -7);
-	
 	/* echo the data back */
-	int read = 0;
-	int write = 0;
-	printf("server_worker: entering while loop\n");
 	while (true) {
-		// TODO: Need a fix. Won't work if packet from client arrives before
-		// trigger is set. Will be stuck in poll_wait
-		int ret = poll_cb_once_nonblock(w); 
+		ret = tcp_read(c, buf, BUF_SIZE);
+		if (ret <= 0)
+			break;
 
-		if(ret == 0) {
-			read = tcp_read(c, buf, BUF_SIZE);
-		}
-			
-		if(read > 0 ) {
-			//timer_sleep(5*ONE_SECOND);
-			write = tcp_write(c, buf, read);
-			read = 0;
-		} 
-		t->triggered = false;	
+		ret = tcp_write(c, buf, ret);
+		if (ret < 0)
+			break;
 	}
 
 	tcp_close(c);
 }
 
-static void do_server(int id)
+static void do_server(void *arg)
 {
 	struct netaddr laddr;
 	tcpqueue_t *q;
 	int ret;
 
 	laddr.ip = 0;
-	laddr.port = NETPERF_PORT + id;
+	laddr.port = NETPERF_PORT;
 
 	ret = tcp_listen(laddr, 4096, &q);
-	tcpqueue_set_nonblocking(q, 1);
 	BUG_ON(ret);
 
-        //Creating a waiter for this thread
-        poll_waiter_t *w;
-        ret = create_waiter(&w);
-
-	//Creating a trigger for this socket
-        poll_trigger_t *t;
-        ret = create_trigger(&t);
-
-        struct list_head *h;
-        h = tcpqueue_get_triggers(q);
-
-	// Passing tcp_accept as a call back function	
-	tcpconn_t *c;
-	tcparg_t *accept_arg;
-
-	accept_arg = (tcparg_t *)malloc(sizeof(tcparg_t)); 
-	accept_arg->q = q;
-	accept_arg->c = &c;
-	
-	sh_event_callback_fn cb = &tcp_accept_poll;
-
-        //register trigger with a waiter
-        poll_arm_w_queue(w, h, t, SEV_READ, cb, accept_arg, q, -7);
-
 	while (true) {
-		c = NULL;
-		ret = poll_cb_once(w); 
-		if(ret == 0) {
-			if(c != NULL) {
-				// Won't work if the server gets 2 connections 
-				// together. 
-				printf("Connection Accepted\n");
-				printf("thread_id: %d\n", id);
-				tcpconn_t *c_tmp = c;
-				//ret = thread_spawn(server_worker, c_tmp);
-				
-				//continue;		
-				tcp_set_nonblocking(c_tmp, 1);
-				poll_trigger_t *t_tmp;
-				ret = create_trigger(&t_tmp);
-	
-				h = tcp_get_triggers(c_tmp);
-				
-				unsigned char buf[BUF_SIZE];
+		tcpconn_t *c;
 
-				tcp_read_arg_t *read_arg;
-				read_arg = (tcp_read_arg_t *)malloc(sizeof(tcp_read_arg_t)); 
-				read_arg->c = c_tmp;
-				read_arg->buf = buf;
-				read_arg->len = BUF_SIZE;
-
-				sh_event_callback_fn cb = &tcp_read_poll;
-
-				//register trigger with a waiter
-				poll_arm_w_sock(w, h, t_tmp, SEV_READ, cb, read_arg, c_tmp, -7);
-
-			}
-			//ret = tcp_accept(q, &c);
-		}
-		
-		/*
 		ret = tcp_accept(q, &c);
 		BUG_ON(ret);
-		printf("Connection Accepted\n");
 		ret = thread_spawn(server_worker, c);
 		BUG_ON(ret);
-		*/
 	}
-}
-
-void start_server_threads(void *arg) {
-	for(int i=0;i<nworkers;i++) {
-		int ret = thread_spawn(do_server, i);
-	}
-
-	while(true);
-}
-
-void start_client_threads(void *arg) {
-	for(int i=0;i<nworkers;i++) {
-		int ret = thread_spawn(do_client_poll, i);
-	}
-
-	while(true);
 }
 
 static int str_to_ip(const char *str, uint32_t *addr)
@@ -378,11 +189,9 @@ int main(int argc, char *argv[])
 	}
 
 	if (!strcmp(argv[2], "CLIENT")) {
-		//fn = do_client_poll;
-		fn = start_client_threads;
+		fn = do_client;
 	} else if (!strcmp(argv[2], "SERVER")) {
-		//fn = do_server;
-		fn = start_server_threads;
+		fn = do_server;
 	} else {
 		printf("invalid mode '%s'\n", argv[2]);
 		return -EINVAL;
