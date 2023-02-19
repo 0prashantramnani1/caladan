@@ -118,8 +118,8 @@ void dataplane_loop(void)
 		if (!work_done)
 			dp_clients_rx_control_lrpcs();
 
-		// STAT_INC(BATCH_TOTAL, IOKERNEL_RX_BURST_SIZE);
-		STAT_INC(BATCH_TOTAL, work_done);
+		STAT_INC(BATCH_TOTAL, IOKERNEL_RX_BURST_SIZE);
+		// STAT_INC(BATCH_TOTAL, work_done);
 
 #ifdef STATS
 		if (microtime() > next_log_time) {
