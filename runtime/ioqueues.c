@@ -26,7 +26,7 @@
 #include "defs.h"
 #include "net/defs.h"
 
-#define PACKET_QUEUE_MCOUNT	4096
+#define PACKET_QUEUE_MCOUNT	4096*10
 #define COMMAND_QUEUE_MCOUNT	4096
 
 /* the egress buffer pool must be large enough to fill all the TXQs entirely */
