@@ -27,6 +27,7 @@ static int seconds;
 static uint64_t stop_us;
 static size_t payload_len;
 long long int reqs_threads[1000];
+int ports;
 
 
 #define BUF_SIZE        32768
@@ -54,7 +55,7 @@ static void do_client_poll(int id) {
     laddr.port = 0;
 
     for(int j=0;j<nflows;j++) {// Connections per thread
-        raddr.port = NETPERF_PORT;
+        raddr.port = NETPERF_PORT + j%ports;
         ret = tcp_dial(laddr, raddr, &c[j]);
         if(ret) {
             printf("Error in dialing\n");
@@ -143,9 +144,9 @@ int main(int argc, char *argv[])
     thread_fn_t fn;
 	memset(reqs_threads, 0, 1000*sizeof(long long int));
 
-    if (argc < 7) {
+    if (argc < 8) {
             printf("%s: [config_file_path] [nflows] [nthreads] [ip] [time] "
-                    "[payload_len] \n", argv[0]);
+                    "[payload_len] [num_ports]\n", argv[0]);
             return -EINVAL;
     }
 
@@ -186,6 +187,13 @@ int main(int argc, char *argv[])
             return -EINVAL;
     }
     payload_len = tmp;
+
+    ret = str_to_long(argv[7], &tmp);
+    if (ret) {
+            printf("couldn't parse [num_ports] '%s'\n", argv[6]);
+            return -EINVAL;
+    }
+    ports = tmp;
 
     ret = runtime_init(argv[1], fn, NULL);
     if (ret) {
