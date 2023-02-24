@@ -30,6 +30,9 @@ static int depth;
 
 #define BUF_SIZE	32768
 
+waitgroup_t wg;
+
+
 static void do_server(int id)
 {
 	struct netaddr laddr;
@@ -39,13 +42,13 @@ static void do_server(int id)
 	unsigned long ret;
 	
 	laddr.ip = 0;
-	laddr.port = NETPERF_PORT;
+	laddr.port = NETPERF_PORT + id;
 
 	ret = tcp_listen(laddr, 4096, &q);
 
 	for(int i=0;i<nflows;i++) {
 		ret = tcp_accept(q, &c[i]);
-		printf("Connection Accepted - thread_id: %d - raddr_port: %d \n", id, tcp_get_raddr_port(c[i]));
+		printf("%d Connection Accepted - thread_id: %d - raddr_port: %d \n", i+1, id, tcp_get_raddr_port(c[i]));
 		tcp_set_nonblocking(c[i], 1);
 	}
 
@@ -74,15 +77,21 @@ static void do_server(int id)
 	}
 	printf("TOTAL_BYTES %ld\n", total_bytes);
 	printf("Throughput: %ld Gbps\n", (total_bytes*8)/((unsigned long)1024*1024*1024*10));
+
+	waitgroup_done(&wg);
 }
 
 void start_server_threads(void *arg) {
+
+	waitgroup_init(&wg);
+	waitgroup_add(&wg, nthreads);
 
 	for(int i=0;i<nthreads;i++) {
 		int ret = thread_spawn(do_server, i);
 	}
 
-	while(true);
+	// while(true);
+	waitgroup_wait(&wg);
 }
 
 static int str_to_ip(const char *str, uint32_t *addr)
@@ -114,8 +123,8 @@ int main(int argc, char *argv[])
 	uint32_t addr;
 	thread_fn_t fn;
 
-	if (argc < 4) {
-		printf("%s: [config_file_path] [nflows] [payload_len]\n", argv[0]);
+	if (argc < 5) {
+		printf("%s: [config_file_path] [nflows] [nthreads] [payload_len]\n", argv[0]);
 		return -EINVAL;
 	}
 	
@@ -126,10 +135,16 @@ int main(int argc, char *argv[])
 		printf("couldn't parse [nthreads] '%s'\n", argv[3]);
 		return -EINVAL;
 	}
-	nthreads = 1;
 	nflows = tmp;
 
 	ret = str_to_long(argv[3], &tmp);
+	if (ret) {
+		printf("couldn't parse [payload_len] '%s'\n", argv[6]);
+		return -EINVAL;
+	}
+	nthreads = tmp;
+
+	ret = str_to_long(argv[4], &tmp);
 	if (ret) {
 		printf("couldn't parse [payload_len] '%s'\n", argv[6]);
 		return -EINVAL;
