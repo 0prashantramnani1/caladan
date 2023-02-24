@@ -17,7 +17,7 @@
 
 #include "ref.h"
 
-// #define STATS 1
+#define STATS 1
 
 /*
  * configuration parameters

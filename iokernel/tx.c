@@ -237,6 +237,8 @@ bool tx_burst(void)
 			goto full;
 	}
 
+	if(pulltotal >= 60)
+		printf("IOKERNEL_TX_BURST_SIZE: %d - packets pulled: %d\n", IOKERNEL_TX_BURST_SIZE, pulltotal);
 	if (n_pkts == 0)
 		return false;
 
@@ -266,10 +268,24 @@ full:
 
 	n_bufs = n_pkts;
 
+	clock_t start_t, end_t;
+   	double total_t;
+
+	start_t = clock();
+
+
 	/* finally, send the packets on the wire */
 	ret = rte_eth_tx_burst(dp.port, 0, bufs, n_pkts);
 	log_debug("tx: transmitted %d packets on port %d", ret, dp.port);
 
+
+	end_t = clock();
+
+	total_t = (double)(end_t - start_t);
+	printf("Total time taken by CPU: %f\n", total_t);
+	int sz = sizeof(struct rte_mbuf);
+	printf("Size of rte_mbuf: %d - total size sent: %d\n", sz, sz*n_pkts);
+	
 	/* apply back pressure if the NIC TX ring was full */
 	if (unlikely(ret < n_pkts)) {
 		STAT_INC(TX_BACKPRESSURE, n_pkts - ret);
