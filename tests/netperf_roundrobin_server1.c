@@ -17,7 +17,7 @@
 #include <runtime/tcp.h>
 #include <runtime/poll.h>
 
-#define NETPERF_PORT	8013
+#define NETPERF_PORT	8014
 
 
 /* experiment parameters */
@@ -175,8 +175,6 @@ int main(int argc, char *argv[])
 	// }
 
 	ret = runtime_init(argv[1], fn, &runtime);
-	printf("Runtime 1 started\n");
-
 	if (ret) {
 		printf("failed to start runtime\n");
 		return ret;
