@@ -55,13 +55,28 @@ static void do_client_poll(int id) {
     laddr.port = 0;
 
     for(int j=0;j<nflows;j++) {// Connections per thread
-        raddr.port = NETPERF_PORT + j%ports;
+        raddr.port = NETPERF_PORT;//j%ports;
+        printf("Dialing on port: %d\n", raddr.port);
         ret = tcp_dial(laddr, raddr, &c[j]);
         if(ret) {
             printf("Error in dialing\n");
             exit(1);
         }
+        // usleep(100);
+        // sleep(3);
     }
+
+//     for(int j=0;j<nflows/2;j++) {// Connections per thread
+//         raddr.port = NETPERF_PORT + 1;//j%ports;
+//         printf("Dialing on port: %d\n", raddr.port);
+//         ret = tcp_dial(laddr, raddr, &c[j]);
+//         if(ret) {
+//             printf("Error in dialing\n");
+//             exit(1);
+//         }
+//         // usleep(100);
+//         // sleep(1);
+//     }
 
     // Required to synn up connections
     timer_sleep(ONE_SECOND);
