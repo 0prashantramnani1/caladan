@@ -13,10 +13,10 @@ bool __lrpc_send(struct lrpc_chan_out *chan, uint64_t cmd,
 	struct lrpc_msg *dst;
 
 	assert(chan->send_head - chan->send_tail == chan->size);
-	printf("send_head: %d\n", chan->send_head);
-	printf("chan size: %d\n", chan->size);
-	printf("send_tail: %d\n", chan->send_tail);
-	printf("recv_head_wb: %d\n", chan->recv_head_wb);
+	// printf("send_head: %d\n", chan->send_head);
+	// printf("chan size: %d\n", chan->size);
+	// printf("send_tail: %d\n", chan->send_tail);
+	// printf("recv_head_wb: %d\n", chan->recv_head_wb);
 
 	chan->send_tail = load_acquire(chan->recv_head_wb);
 	// printf("send_tail: %d\n", chan->send_tail);
