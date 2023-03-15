@@ -172,7 +172,7 @@ drain:
 /* fast path for handling ingress packets for TCP connections */
 void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 {
-	//printf("in TCP rx CONN \n");
+	// printf("in TCP rx CONN \n");
 	tcpconn_t *c = container_of(e, tcpconn_t, e);
 	struct list_head q;
 	thread_t *rx_th = NULL;
@@ -192,24 +192,30 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	tcphdr = mbuf_pull_hdr_or_null(m, *tcphdr);
 	if (unlikely(!tcphdr)) {
 		mbuf_free(m);
-	//	printf("tcp_rx_conn: return 1\n");
+		printf("tcp_rx_conn: return 1\n");
 		return;
 	}
 
 	/* parse header */
 	seq = ntoh32(tcphdr->seq);
+	// if(seq - c->pcb.irs == 32678) {
+	// 	printf("AAAAA 32768\n");
+	// }
 	ack = ntoh32(tcphdr->ack);
+	// if(ack - c->pcb.iss == 32679) {
+	// 	printf("AAAAA 32768\n");
+	// }
 	win = (uint32_t)ntoh16(tcphdr->win) << c->pcb.snd_wscale;
 	hdr_len = tcphdr->off * sizeof(uint32_t);
 	if (unlikely(hdr_len < sizeof(struct tcp_hdr))) {
 		mbuf_free(m);
-	//	printf("tcp_rx_conn: return 2\n");
+		printf("tcp_rx_conn: return 2\n");
 		return;
 	}
 	len = ntoh16(iphdr->len) - sizeof(*iphdr) - hdr_len;
 	if (unlikely(len > mbuf_length(m) || len > c->pcb.rcv_mss)) {
 		mbuf_free(m);
-	//	printf("tcp_rx_conn: return 3\n");
+		printf("tcp_rx_conn: return 3\n");
 		return;
 	}
 
@@ -243,7 +249,7 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	slow_path |= wraps_gt(ack, snd_nxt);
 
 	if (unlikely(slow_path)) {
-	//	printf("tcp_rx_conn: return 4\n");
+		// printf("tcp_rx_conn: return 4\n");
 		return __tcp_rx_conn(c, m, ack, snd_nxt, win, optp, optlen);
 	}
 
@@ -311,7 +317,24 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	}
 
 	tcp_debug_ingress_pkt(c, m);
-	spin_unlock_np(&c->lock);
+
+	// int TCP_FLAG_STR_LEN = 25;
+	// char in_ip[IP_ADDR_STR_LEN];
+	// char out_ip[IP_ADDR_STR_LEN];
+	// char flags[TCP_FLAG_STR_LEN];
+	// uint32_t ack, seq;
+	// uint16_t in_port, out_port;
+	// uint16_t wnd;
+	// const struct tcp_hdr *tcphdr = (struct tcp_hdr *)mbuf_transport_offset(m);
+
+	// ip_addr_to_str(c->e.laddr.ip, out_ip);
+	// ip_addr_to_str(c->e.raddr.ip, in_ip);
+	// ack = ntoh32(tcphdr->ack) - c->pcb.iss;
+
+	// out_port = c->e.laddr.port;
+	// in_port = c->e.raddr.port;
+
+	// spin_unlock_np(&c->lock);
 
 	/* deferred work (delayed until after the lock was dropped) */
 	waitq_signal_finish(rx_th);
@@ -319,7 +342,7 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	if (do_ack)
 		tcp_tx_ack(c);
 
-	//printf("tcp_rx_conn: done\n");
+	printf("tcp_rx_conn: done\n");
 }
 
 static int tcp_parse_options(tcpconn_t *c, const unsigned char *ptr, int len)
@@ -437,6 +460,7 @@ __tcp_rx_conn(tcpconn_t *c, struct mbuf *m, uint32_t ack, uint32_t snd_nxt,
 			if (wraps_gt(c->pcb.snd_una, c->pcb.iss)) {
 				do_ack = true;
 				c->pcb.snd_wnd = win;
+				// printf("SEND WINDOW %d\n", win);
 				c->pcb.snd_wl1 = seq;
 				c->pcb.snd_wl2 = ack;
 				tcp_conn_set_state(c, TCP_STATE_ESTABLISHED);
@@ -535,6 +559,7 @@ __tcp_rx_conn(tcpconn_t *c, struct mbuf *m, uint32_t ack, uint32_t snd_nxt,
 	 */
 	if (unlikely(ack_same && c->pcb.snd_una != c->pcb.snd_nxt &&
 		     len == 0 && !wnd_updated)) {
+		// printf("fast retransmit\n");
 		c->rep_acks++;
 		if (c->rep_acks >= TCP_FAST_RETRANSMIT_THRESH) {
 			if (c->tx_exclusive) {

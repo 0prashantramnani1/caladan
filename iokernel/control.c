@@ -24,6 +24,7 @@
 #include <base/log.h>
 #include <base/thread.h>
 #include <iokernel/control.h>
+#include <iokernel/shm.h>
 
 #include "hw_timestamp.h"
 #include "defs.h"
@@ -165,6 +166,7 @@ static struct proc *control_create_proc(mem_key_t key, size_t len,
 			goto fail;
 
 		/* attach the TX packet queue */
+		// s->txpktq.msg_count *= 2;
 		ret = shm_init_lrpc_in(&reg, &s->txpktq, &th->txpktq);
 		if (ret)
 			goto fail;

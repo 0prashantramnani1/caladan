@@ -12,6 +12,8 @@
 #include <asm/chksum.h>
 #include <runtime/net.h>
 #include <runtime/smalloc.h>
+#include <net/tcp.h>
+
 
 #include "defs.h"
 
@@ -216,6 +218,7 @@ static void net_rx_one(struct mbuf *m)
 	return;
 
 drop:
+	printf("net_rx_one: Dropping MBUFS\n");
 	mbuf_drop(m);
 }
 
@@ -253,6 +256,7 @@ static void iokernel_softirq_poll(struct kthread *k)
 					    MBUF_DEFAULT_LEN);
 			m = net_rx_alloc_mbuf(hdr);
 			if (unlikely(!m)) {
+				printf("sofirq_poll: Can't get mbufs from shared memory\n");
 				STAT(DROPS)++;
 				continue;
 			}
@@ -366,8 +370,11 @@ static int net_tx_iokernel(struct mbuf *m)
 	hdr->len = len;
 	hdr->olflags = m->txflags;
 	shmptr_t shm = ptr_to_shmptr(&netcfg.tx_region, hdr, len + sizeof(*hdr));
-
+	if(mbuf_length(m) - sizeof(struct tcp_hdr) == 0) {
+		printf("1 LENGTH OF MBUFF IS 0\n");
+	}
 	if (unlikely(!lrpc_send(&k->txpktq, TXPKT_NET_XMIT, shm))) {
+		// printf("net_tx_iokernel: LRPC SEND FAILED!!!\n");
 		mbuf_pull_hdr(m, *hdr);
 		return -1;
 	}
@@ -382,13 +389,16 @@ static void net_tx_raw(struct mbuf *m)
 
 	k = getk();
 	/* drain pending overflow packets first */
-	if (unlikely(!mbufq_empty(&k->txpktq_overflow)))
+	if (unlikely(!mbufq_empty(&k->txpktq_overflow))) {
+		// printf("drain pending overflow packets first\n");
 		net_tx_drain_overflow();
+	}
 
 	STAT(TX_PACKETS)++;
 	STAT(TX_BYTES) += len;
 
 	if (unlikely(net_ops.tx_single(m))) {
+		// printf("OVERFLOW!!\n");
 		mbufq_push_tail(&k->txpktq_overflow, m);
 		STAT(TXQ_OVERFLOW)++;
 	}
@@ -415,6 +425,9 @@ void net_tx_eth(struct mbuf *m, uint16_t type, struct eth_addr dhost)
 	eth_hdr->shost = netcfg.mac;
 	eth_hdr->dhost = dhost;
 	eth_hdr->type = hton16(type);
+	if(mbuf_length(m) - sizeof(struct tcp_hdr) == 0) {
+		printf("2 LENGTH OF MBUFF IS 0\n");
+	}
 	net_tx_raw(m);
 }
 
@@ -505,6 +518,8 @@ int net_tx_ip(struct mbuf *m, uint8_t proto, uint32_t daddr)
 {
 	struct eth_addr dhost;
 	int ret;
+	// uint32_t seq = daddr;
+	// daddr = 168427777;
 
 	/* prepend the IP header */
 	net_push_iphdr(m, proto, daddr);
@@ -522,6 +537,7 @@ int net_tx_ip(struct mbuf *m, uint8_t proto, uint32_t daddr)
 	/* need to use ARP to resolve dhost */
 	ret = arp_lookup(daddr, &dhost, m);
 	if (unlikely(ret)) {
+		printf("net_tx_ip: ARP lookup failed\n");
 		if (ret == -EINPROGRESS) {
 			/* ARP code now owns the mbuf */
 			return 0;
@@ -531,6 +547,16 @@ int net_tx_ip(struct mbuf *m, uint8_t proto, uint32_t daddr)
 			return ret;
 		}
 	}
+
+	// const struct tcp_hdr *tcphdr = (struct tcp_hdr *)mbuf_data(m);
+	// uint32_t seq;
+	// seq = ntoh32(tcphdr->seq);
+	// if(seq == 32769) {
+	// 	printf("net_tx_ip AAAA4 32769\n");
+	// }
+	// if(mbuf_length(m) - sizeof(struct tcp_hdr) == 0) {
+	// 	printf("3 LENGTH OF MBUFF IS 0\n");
+	// }
 
 	net_tx_eth(m, ETHTYPE_IP, dhost);
 	return 0;

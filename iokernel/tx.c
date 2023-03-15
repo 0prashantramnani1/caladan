@@ -190,6 +190,7 @@ static int tx_drain_queue(struct thread *t, int n,
 		unsigned long payload;
 
 		if (!lrpc_recv(&t->txpktq, &cmd, &payload)) {
+			// printf("tx_drain_queue: LRPC RECIEVE FAILED\n");
 			if (unlikely(!t->active))
 				unpoll_thread(t);
 			break;
@@ -236,9 +237,9 @@ bool tx_burst(void)
 		if (n_pkts >= IOKERNEL_TX_BURST_SIZE)
 			goto full;
 	}
-
-	// if(pulltotal >= 60)
-		// printf("IOKERNEL_TX_BURST_SIZE: %d - packets pulled: %d\n", IOKERNEL_TX_BURST_SIZE, pulltotal);
+	
+	// if(pulltotal)
+	// 	printf("IOKERNEL_TX_BURST_SIZE: %d - packets pulled: %d\n", IOKERNEL_TX_BURST_SIZE, pulltotal);
 	if (n_pkts == 0)
 		return false;
 
@@ -253,6 +254,7 @@ full:
 		ret = rte_mempool_get_bulk(tx_mbuf_pool, (void **)&bufs[n_bufs],
 					n_pkts - n_bufs);
 		if (unlikely(ret)) {
+			printf("tx: error getting mbufs from mempool\n");
 			stats[TX_COMPLETION_FAIL] += n_pkts - n_bufs;
 			log_warn_ratelimited("tx: error getting %d mbufs from mempool", n_pkts - n_bufs);
 			return true;
@@ -264,6 +266,7 @@ full:
 		if (i + TX_PREFETCH_STRIDE < n_pkts)
 			prefetch(hdrs[i + TX_PREFETCH_STRIDE]);
 		tx_prepare_tx_mbuf(bufs[i], hdrs[i], threads[i]);
+		// printf("DATA LEN: %d\n", bufs[i]->data_len);
 	}
 
 	n_bufs = n_pkts;
@@ -276,7 +279,7 @@ full:
 
 	/* finally, send the packets on the wire */
 	ret = rte_eth_tx_burst(dp.port, 0, bufs, n_pkts);
-	log_debug("tx: transmitted %d packets on port %d", ret, dp.port);
+	// log_debug("tx: transmitted %d packets on port %d", ret, dp.port);
 
 
 	end_t = clock();
