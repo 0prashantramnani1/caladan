@@ -467,7 +467,7 @@ static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 		poll_trigger_t *pt;
 		list_for_each(&q->sock_events, pt, sock_link) {
 			if ((pt->event_type & SEV_READ) && !pt->triggered) {
-				printf("tcp_queue_recv: going into poll_trigger\n");
+				//printf("tcp_queue_recv: going into poll_trigger\n");
 			       	poll_trigger(pt->waiter, pt);
 			}
 		}

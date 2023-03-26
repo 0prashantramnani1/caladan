@@ -21,7 +21,7 @@ bool __lrpc_send(struct lrpc_chan_out *chan, uint64_t cmd,
 	chan->send_tail = load_acquire(chan->recv_head_wb);
 	// printf("send_tail: %d\n", chan->send_tail);
         if (chan->send_head - chan->send_tail == chan->size) {
-				printf("Returning FAlse\n");
+				//printf("Returning FAlse\n");
                 return false;
 		}
 

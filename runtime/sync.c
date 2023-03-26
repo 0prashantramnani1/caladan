@@ -435,17 +435,17 @@ void barrier_init(barrier_t *b, int count)
  */
 bool barrier_wait(barrier_t *b)
 {
-	printf("In barrier_wait \n");
+	// printf("In barrier_wait \n");
 	thread_t *th;
 	struct list_head tmp;
 
 	list_head_init(&tmp);
-	printf("0.bw \n");
+	// printf("0.bw \n");
 
 	spin_lock_np(&b->lock);
-	printf("1.bw \n");
+	// printf("1.bw \n");
 	if (++b->waiting >= b->count) {
-		printf("2.bw \n");
+		// printf("2.bw \n");
 		list_append_list(&tmp, &b->waiters);
 		b->waiting = 0;
 		spin_unlock_np(&b->lock);
@@ -457,7 +457,7 @@ bool barrier_wait(barrier_t *b)
 		}
 		return true;
 	}
-	printf("3.bw\n");
+	// printf("3.bw\n");
 	th = thread_self();
 	list_add_tail(&b->waiters, &th->link);
 	thread_park_and_unlock_np(&b->lock);

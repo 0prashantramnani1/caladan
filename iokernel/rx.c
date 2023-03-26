@@ -67,7 +67,7 @@ bool rx_send_to_runtime(struct proc *p, uint32_t hash, uint64_t cmd,
 		return lrpc_send(&th->rxq, cmd, payload);
 	}
 
-	printf("No Active Threads\n");
+	//printf("No Active Threads\n");
 	if (!cfg.noidlefastwake)
 		sched_add_core(p);
 	if (unlikely(sched_threads_active(p) == 0)) {
@@ -124,7 +124,7 @@ static void rx_one_pkt(struct rte_mbuf *buf)
 		//log_info("rx_one_pkt got packet %d", net_hdr->len);
 		if (!rx_send_pkt_to_runtime(p, net_hdr)) {
 			STAT_INC(RX_UNICAST_FAIL, 1);
-			printf("rx: failed to send unicast packet to runtime\n");
+			//printf("rx: failed to send unicast packet to runtime\n");
 			log_debug_ratelimited("rx: failed to send unicast packet to runtime");
 			rte_pktmbuf_free(buf);
 		}
