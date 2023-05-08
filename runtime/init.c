@@ -164,6 +164,8 @@ int runtime_init(const char *cfgpath, thread_fn_t main_fn, void *arg)
 	pthread_t tid[NCPU];
 	int ret, i;
 
+	__asm__ __volatile__("xchg %%rcx, %%rcx;" : : "c"(1026));
+
 	ret = base_init();
 	if (ret) {
 		log_err("base library global init failed, ret = %d", ret);
@@ -190,6 +192,8 @@ int runtime_init(const char *cfgpath, thread_fn_t main_fn, void *arg)
 			return ret;
 		}
 	}
+
+	__asm__ __volatile__("xchg %%rcx, %%rcx;" : : "c"(1025));
 
 	ret = runtime_init_thread();
 	BUG_ON(ret);
