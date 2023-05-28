@@ -300,6 +300,8 @@ tcpconn_t *tcp_conn_alloc(void)
 	c->pcb.rcv_wnd = TCP_WIN;
 	c->pcb.rcv_mss = tcp_calculate_mss(net_get_mtu());
 
+	c->data_recv = 0;
+
 	return c;
 }
 
@@ -467,7 +469,7 @@ static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 		poll_trigger_t *pt;
 		list_for_each(&q->sock_events, pt, sock_link) {
 			if ((pt->event_type & SEV_READ) && !pt->triggered) {
-				//printf("tcp_queue_recv: going into poll_trigger\n");
+				// printf("tcp_queue_recv: going into poll_trigger\n");
 			       	poll_trigger(pt->waiter, pt);
 			}
 		}
@@ -614,7 +616,7 @@ int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 
 	if (list_empty(&q->conns) && !q->shutdown && q->non_blocking) {
 		spin_unlock_np(&q->l);
-		return 0;
+		return -123;
 	}
 
 	while (list_empty(&q->conns) && !q->shutdown)

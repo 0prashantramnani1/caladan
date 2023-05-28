@@ -147,7 +147,8 @@ void poll_arm_w_sock_neper(poll_waiter_t *w, struct list_head *sock_event_head,
 	spin_lock_np(&w->lock);
 
 	// Hack to manually set write epoll true
-	if(event_type & SEV_WRITE) {
+	if(event_type & SEV_WRITE || event_type & SEV_READ) {
+		printf("Setting connection trigger to true\n");
 		t->triggered = true;
 		list_add(&w->triggered, &t->link);
 	}
@@ -326,7 +327,7 @@ int poll_return_triggers(poll_waiter_t *w, poll_trigger_t **events, int max_even
 			
 			// Hack to set the write triggers again
 			for(int i=0;i<nevents;i++) {
-				if(events[i]->event_type & SEV_WRITE) {
+				if(events[i]->event_type & SEV_WRITE || events[i]->event_type & SEV_READ) {
 					events[i]->triggered = true;
 					list_add_tail(&w->triggered, &(events[i]->link));
 				}
@@ -343,7 +344,7 @@ int poll_return_triggers(poll_waiter_t *w, poll_trigger_t **events, int max_even
 		if(nevents >= max_events) {
 
 			for(int i=0;i<nevents;i++) {
-				if(events[i]->event_type & SEV_WRITE) {
+				if(events[i]->event_type & SEV_WRITE || events[i]->event_type & SEV_READ) {
 					events[i]->triggered = true;
 					list_add_tail(&w->triggered, &(events[i]->link));
 				}
