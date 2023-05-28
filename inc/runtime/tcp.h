@@ -26,6 +26,8 @@ struct tcp_read_arg {
 };
 typedef struct tcp_read_arg tcp_read_arg_t;
 
+// Caraousel
+// extern uint64_t conns_timeout_ordering[2000];
 
 extern int tcp_dial(struct netaddr laddr, struct netaddr raddr,
 		    tcpconn_t **c_out);

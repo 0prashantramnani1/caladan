@@ -17,6 +17,13 @@
 
 #include "defs.h"
 
+uint64_t next_log_time;
+
+#include <runtime/tcp.h>
+
+// Carousel
+// extern uint64_t conns_timeout_ordering[2000];
+
 /* the current running thread, or NULL if there isn't one */
 __thread thread_t *__self;
 /* a pointer to the top of the per-kthread (TLS) runtime stack */
@@ -320,7 +327,21 @@ static __noinline bool do_watchdog(struct kthread *l)
 /* the main scheduler routine, decides what to run next */
 static __noreturn __noinline void schedule(void)
 {
+
 	struct kthread *r = NULL, *l = myk();
+	#ifdef TCP_RX_STATS
+		if (microtime() > next_log_time) {
+				print_stats();
+				next_log_time += LOG_INTERVAL_US;
+				printf("NUMBER OF ELEMENTS IN RUN QUEUE id %d: %d\n", l->kthread_idx, l->rq_head - l->rq_tail);	
+
+				// Carousel
+				// for(int i=0;i<2000;i++) {
+				// 	printf("%d ", conns_timeout_ordering[i]);
+				// }
+				// printf("\n");
+		}
+	#endif
 	uint64_t start_tsc;
 	thread_t *th = NULL;
 	unsigned int start_idx;
@@ -925,6 +946,8 @@ void thread_exit(void)
  */
 static __noreturn void schedule_start(void)
 {
+	next_log_time = microtime();
+
 	struct kthread *k = myk();
 
 	/*

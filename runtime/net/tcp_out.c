@@ -364,6 +364,7 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 	 * in such corner cases.
 	 */
 	if (unlikely(atomic_read(&m->ref) != 1)) {
+//		printf("Retransmitting packet lost on queue\n");
 		struct mbuf *newm = net_tx_alloc_mbuf();
 		if (unlikely(!newm))
 			return -ENOMEM;
@@ -376,6 +377,7 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 		newm->txflags = OLFLAG_TCP_CHKSUM;
 		m = newm;
 	} else {
+//		printf("Retransmitting packet stuck in lRPC queue\n");
 		/* strip headers and reset ref count */
 		mbuf_reset(m, m->transport_off + sizeof(struct tcp_hdr));
 		atomic_write(&m->ref, 2);
@@ -456,6 +458,7 @@ void tcp_tx_retransmit(tcpconn_t *c)
 
 		m->timestamp = now;
 		ret = tcp_tx_retransmit_one(c, m);
+		STAT_INC(STAT_TX_RETRANSMIT, 1);
 		if (ret)
 			break;
 

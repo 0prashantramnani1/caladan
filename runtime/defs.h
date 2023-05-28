@@ -356,9 +356,34 @@ enum {
 	STAT_FLOW_STEERING_CYCLES,
 	STAT_RX_HW_DROP,
 
+	SIGUSR1_RECV,			// Number of times sigusr1 is received by runtime
+	SIGUSR2_RECV,			// Number of times sigusr2 is received by runtime
+
+	STAT_ACK_TIMEOUT,		 // Number of times tcp_update_timer updates c->next_timeout due to ack delay
+	STAT_ZERO_WND_TIMEOUT,	 // Number of times tcp_update_timer updates c->next_timeout due to zero wnd
+	STAT_RETRANSMIT_TIMEOUT, // Number of times tcp_update_timer updates c->next_timeout due to retrasnmit
+	STAT_TX_RETRANSMIT,		// Number of times tcp_tx_retransmit_one function is called
+	STAT_TCP_HANDLE_TIMEOUT, // Number of times tcp_worker finds timedout connections (c->next_timeout <= now) -> tcp_handle_timeout function is called
+	STAT_TCP_CONNS_LEN,		// Verifying the number of connections in tcp_conns struct
+	STAT_TCP_WORKER_SCHED,  // Number of times tcp_worker uthread is scheduled
+
 	/* total number of counters */
 	STAT_NR,
 };
+
+extern uint64_t stats[STAT_NR];
+
+#define LOG_INTERVAL_US                (1000 * 5000)
+
+#define TCP_RX_STATS 1
+
+#ifdef TCP_RX_STATS
+#define STAT_INC(stat_name, amt) do { stats[stat_name] += amt; } while (0);
+#else
+#define STAT_INC(stat_name, amt) ;
+#endif
+
+extern void print_stats(void);
 
 struct timer_idx {
 	uint64_t		deadline_us;

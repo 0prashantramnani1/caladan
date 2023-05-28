@@ -24,6 +24,7 @@ static void set_preempt_needed(void)
 static void handle_sigusr1(int s, siginfo_t *si, void *c)
 {
 	STAT(PREEMPTIONS)++;
+	STAT_INC(SIGUSR1_RECV, 1);
 
 	/* resume execution if preemption is disabled */
 	if (!preempt_enabled()) {
@@ -41,6 +42,7 @@ static void handle_sigusr1(int s, siginfo_t *si, void *c)
 static void handle_sigusr2(int s, siginfo_t *si, void *c)
 {
 	STAT(PREEMPTIONS)++;
+	STAT_INC(SIGUSR2_RECV, 1);
 
 	/* resume execution if preemption is disabled */
 	if (!preempt_enabled()) {

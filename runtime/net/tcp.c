@@ -15,10 +15,20 @@
 
 #include "tcp.h"
 
+#include <base/intmap.h>
+
 /* protects @tcp_conns */
 static DEFINE_SPINLOCK(tcp_lock);
 /* a list of all TCP connections */
 static LIST_HEAD(tcp_conns);
+
+// CAROUSEL
+static DEFINE_SPINLOCK(timeout_ordering_lock);
+// static struct list_head conns_timeout_ordering[1000];
+// uint64_t conns_timeout_ordering[2000] = {0};
+typedef UINTMAP(tcpconn_t *) conn_map;
+conn_map map;
+
 
 static thread_t *tcp_worker_th;
 
@@ -30,27 +40,43 @@ void tcp_timer_update(tcpconn_t *c)
 	struct mbuf *m;
 	assert_spin_lock_held(&c->lock);
 
+	// TCP_STATE_TIME_WAIT - used for closing the connection, probably waiting for last
 	if (unlikely(c->pcb.state == TCP_STATE_TIME_WAIT))
 		next_timeout = c->time_wait_ts + TCP_TIME_WAIT_TIMEOUT;
-
+	
 	if (unlikely(c->pcb.state < TCP_STATE_ESTABLISHED))
 		next_timeout = c->attach_ts + TCP_CONNECT_TIMEOUT;
 
-	if (c->ack_delayed)
+	if (c->ack_delayed) {
 		next_timeout = MIN(next_timeout, c->ack_ts + TCP_ACK_TIMEOUT);
-	if (c->zero_wnd)
+		STAT_INC(STAT_ACK_TIMEOUT, 1);
+	}
+	if (c->zero_wnd) {
 		next_timeout = MIN(next_timeout, c->zero_wnd_ts + TCP_ZERO_WND_TIMEOUT);
+		STAT_INC(STAT_ZERO_WND_TIMEOUT, 1);
+	}
 
 	if (!c->tx_exclusive) {
 		m = list_top(&c->txq, struct mbuf, link);
 		if (m)
 			next_timeout = MIN(next_timeout, m->timestamp + TCP_RETRANSMIT_TIMEOUT);
+		STAT_INC(STAT_RETRANSMIT_TIMEOUT, 1);
 	}
 
 	if (!list_empty(&c->rxq_ooo))
 		next_timeout = MIN(next_timeout, microtime() + TCP_OOQ_ACK_TIMEOUT);
+	
+	uint64_t old_timeout = c->next_timeout;
 
 	store_release(&c->next_timeout, next_timeout);
+
+	// Carousel
+	// spin_lock_np(&timeout_ordering_lock);
+	// uintmap_del(&map, old_timeout);
+	// uintmap_add(&map, c->next_timeout, c);
+	// conns_timeout_ordering[old_timeout%2000]--;
+	// conns_timeout_ordering[c->next_timeout%2000]++;
+	// spin_unlock_np(&timeout_ordering_lock);
 }
 
 /* check for timeouts in a TCP connection */
@@ -116,14 +142,53 @@ static void tcp_handle_timeouts(tcpconn_t *c, uint64_t now)
 		thread_spawn(tcp_retransmit, c);
 }
 
+
+//Carousel
+// static bool iterator(intmap_index_t index, tcpconn_t *c, int *num) {
+// 	// Only dump out num nodes.
+// 	// printf("%lu=>%i\n", (unsigned long)index, c->next_timeout);
+// 	if(c == NULL || c->next_timeout == -1 || c->next_timeout == 0)
+// 		return true;
+
+// 	if (*(num--) == 0 || preempt_needed()) {
+// 		again = true;
+// 		return false;
+// 	}
+// 	printf("NEXT_TIMEOUT: %lu - NOW: %lu\n", c->next_timeout, now);
+// 	if (c->next_timeout <= now) {
+// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+// 		tcp_handle_timeouts(c, now);
+// 	} else {
+// 		return false;
+// 	}
+// 	return true;
+// }
+
+
+// uint64_t now;
+// bool again;
+
 /* a periodic background thread that handles timeout events */
 static void tcp_worker(void *arg)
 {
-	tcpconn_t *c;
+	tcpconn_t *c = NULL;
+	tcpconn_t *c_next = NULL;
+	// c = tcp_conn_alloc();
 	uint64_t now;
+	int from = 0, to = 0;
+	// uintmap_init(&map);
+	// uintmap_add(&map, 0, c);
 
+	int tcp_timeout = 0;
 	while (true) {
+		STAT_INC(STAT_TCP_WORKER_SCHED, 1);
+		if(c_next == NULL) {
+			c_next = list_top(&tcp_conns, tcpconn_t, global_link);
+		}
+		from = 0;
+		to = 0;
 		bool again = false;
+		// again = false;
 		now = microtime();
 
 		spin_lock_np(&tcp_lock);
@@ -133,16 +198,53 @@ static void tcp_worker(void *arg)
 			thread_park_and_unlock_np(&tcp_lock);
 			continue;
 		}
-
+		
+		// Carousel
+		// if(!uintmap_empty(&map)) {
+		// 	spin_lock_np(&timeout_ordering_lock);
+		// 	int max = 20000;
+		// 	uintmap_iterate(&map, iterator, &max);
+		// 	spin_unlock_np(&timeout_ordering_lock);
+		// }
 
 		list_for_each(&tcp_conns, c, global_link) {
+			if(c_next == NULL)
+				break;
+
+			// if(c->next_timeout != c_next->next_timeout)
+				// printf("TIMEOUT IS NOT EQUAL: %d\n", to);
 			if (preempt_needed()) {
 				again = true;
 				break;
 			}
-			if (load_acquire(&c->next_timeout) <= now)
-				tcp_handle_timeouts(c, now);
+
+			to++;
+			if (load_acquire(&c_next->next_timeout) <= now) {
+				STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+				tcp_handle_timeouts(c_next, now);
+			}
+			c_next = list_next(&tcp_conns, c_next, global_link);
 		}
+		// while(1) {
+		// 	if (preempt_needed()) {
+		// 		again = true;
+		// 		// printf("PREEMPT NEEDED\n");
+		// 		break;
+		// 	}
+		// 	to++;
+		// 	c_next = list_next(&tcp_conns, c_next, global_link);
+		// 	if(c_next == NULL) {
+		// 		// printf("BREAKING DUE TO C NULL\n");
+		// 		break;
+		// 	}
+		// 	if (load_acquire(&c_next->next_timeout) <= now) {
+		// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+		// 		tcp_handle_timeouts(c_next, now);
+		// 		tcp_timeout++;
+		// 	}
+		// }
+		// printf("LOOP RAN FROM %d -> TO %d, TCP_TIMEOUT %d\n", from, to, tcp_timeout);
+		from = to;
 		spin_unlock_np(&tcp_lock);
 
 		if (!again)
@@ -335,6 +437,7 @@ int tcp_conn_attach(tcpconn_t *c, struct netaddr laddr, struct netaddr raddr)
 	spin_lock_np(&tcp_lock);
 	swapvars(th, tcp_worker_th);
 	list_add_tail(&tcp_conns, &c->global_link);
+	STAT_INC(STAT_TCP_CONNS_LEN, 1);
 	spin_unlock_np(&tcp_lock);
 
 	if (th)
@@ -1268,15 +1371,21 @@ ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len)
 	ssize_t ret;
 
 	/* block until the data can be sent */
+	// printf("going into tcp_write_wait\n");
 	ret = tcp_write_wait(c, &winlen);
+	// printf("tcp_write wait done\n");
 	if (ret)
 		return ret;
 
 	/* actually send the data */
+	// printf("going into tcp_tx_send\n");
 	ret = tcp_tx_send(c, buf, MIN(len, winlen), true);
+	// printf("tcp_tx_send done\n");
 
 	/* catch up on any pending work */
+	// printf("going into tcp_write_finish\n");
 	tcp_write_finish(c);
+	// printf("tcp_write_finish done\n");
 
 	return ret;
 }
@@ -1518,4 +1627,5 @@ void tcp_close(tcpconn_t *c)
 int tcp_init_late(void)
 {
 	return thread_spawn(tcp_worker, NULL);
+	return 0;
 }
