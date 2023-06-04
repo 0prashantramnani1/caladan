@@ -6,6 +6,7 @@
 #include <base/list.h>
 #include <base/kref.h>
 #include <base/time.h>
+#include <base/rbtree.h>
 #include <runtime/sync.h>
 #include <runtime/tcp.h>
 #include <net/tcp.h>
@@ -82,9 +83,14 @@ struct tcp_pcb {
 
 /* the TCP connection struct */
 struct tcpconn {
+	uint32_t 			id;
+	uint64_t			rb_key;
 	struct trans_entry	e;
 	struct tcp_pcb		pcb;
 	struct list_node	global_link;
+
+	struct rb_node rb_link;
+
 	struct list_node	queue_link;
 	spinlock_t		lock;
 	struct kref		ref;

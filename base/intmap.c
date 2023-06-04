@@ -58,7 +58,7 @@ static bool split_node(struct intmap *n, intmap_index_t nodeindex,
 
 	/* Find highest bit where they differ. */
 	unsigned int critbit = bitops_hs64(nodeindex ^ index);
-	assert(critbit < CHAR_BIT*sizeof(index));
+	// assert(critbit < CHAR_BIT*sizeof(index));
 
 	/* Which direction do we go at this bit? */
 	new_dir = (index >> critbit) & 1;

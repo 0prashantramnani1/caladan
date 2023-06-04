@@ -366,6 +366,11 @@ enum {
 	STAT_TCP_HANDLE_TIMEOUT, // Number of times tcp_worker finds timedout connections (c->next_timeout <= now) -> tcp_handle_timeout function is called
 	STAT_TCP_CONNS_LEN,		// Verifying the number of connections in tcp_conns struct
 	STAT_TCP_WORKER_SCHED,  // Number of times tcp_worker uthread is scheduled
+	STAT_SAME_KEY_RBTREE,	// Number of times insert failed sure to same key
+	STAT_TCP_TIMER_UPDATE, // Number of time tcp_timer_update function is called
+	STAT_NEXT_TIMEOUT_UNDEFINED, // Number of times next_timeout is -1L
+	STAT_RBTREE_INSERT_FAIL,    // Number of times insert to the rb tree failed
+	STAT_RBLOOP_BREAK, 			// Number of time tcp_worker rb loop completed work and slept
 
 	/* total number of counters */
 	STAT_NR,

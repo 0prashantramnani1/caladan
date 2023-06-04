@@ -65,6 +65,11 @@ static const char *stat_names[] = {
 	"tcp_handle_timeout",
 	"tcp_conns_len",
 	"tcp_worker_scheduled",
+	"same_key_rbtree",
+	"tcp_timer_upadte",
+	"next_timeout_undefined",
+	"rbtree_insert_fail",
+	"rbloop_break"
 };
 
 static const char *tc_stat_names[] = {
