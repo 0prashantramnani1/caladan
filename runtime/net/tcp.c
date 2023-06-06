@@ -135,8 +135,8 @@ void tcp_timer_update(tcpconn_t *c)
 		next_timeout = MIN(next_timeout, microtime() + TCP_OOQ_ACK_TIMEOUT);
 	
 	uint64_t old_timeout = c->next_timeout;
-	// store_release(&c->next_timeout, next_timeout);
-	// return;
+	store_release(&c->next_timeout, next_timeout);
+	return;
 
 	if(old_timeout == next_timeout) {
 		store_release(&c->next_timeout, next_timeout);
@@ -363,81 +363,67 @@ static void tcp_worker(void *arg)
 		// 	uintmap_iterate(&map, iterator, &max);
 		// 	spin_unlock_np(&timeout_ordering_lock);
 		// }
-		now = now - 5 * ONE_MS;
-		now = now << 32;
-		now = now | 0x00000000ffffffff;
-		struct rb_node *node;
+		// now = now - 5 * ONE_MS;
+		// now = now << 32;
+		// now = now | 0x00000000ffffffff;
+		// struct rb_node *node;
 
-  		for (node = rb_first(&t_root); node; node = rb_next(node)) {
-			if (preempt_needed()) {
-				again = true;
-				break;
-			}
+  		// for (node = rb_first(&t_root); node; node = rb_next(node)) {
+		// 	if (preempt_needed()) {
+		// 		again = true;
+		// 		break;
+		// 	}
 
-			tcpconn_t *c_next = container_of(node, tcpconn_t, rb_link);
-			// printf("NOW: %lu - timeout %lu\n", now, c_next->next_timeout);
+		// 	tcpconn_t *c_next = container_of(node, tcpconn_t, rb_link);
+		// 	// printf("NOW: %lu - timeout %lu\n", now, c_next->next_timeout);
 
-			if (load_acquire(&c_next->rb_key) <= now) {
-				STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
-				tcp_handle_timeouts(c_next, now);
-			} 
-			else {
-				STAT_INC(STAT_RBLOOP_BREAK, 1);
-				break;
-			}
-			to++;
-		}
+		// 	if (load_acquire(&c_next->rb_key) <= now) {
+		// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+		// 		tcp_handle_timeouts(c_next, now);
+		// 	}
+		// 	else {
+		// 		STAT_INC(STAT_RBLOOP_BREAK, 1);
+		// 		break;
+		// 	}
+		// 	to++;
+		// }
 
 
 		// list_for_each(&tcp_conns, c, global_link) {
-		// 	if(c_next == NULL)
-		// 		break;
-
-		// 	// if(c->next_timeout != c_next->next_timeout)
-		// 		// printf("TIMEOUT IS NOT EQUAL: %d\n", to);
 		// 	if (preempt_needed()) {
 		// 		again = true;
 		// 		break;
 		// 	}
 
-		// 	to++;
-		// 	if (load_acquire(&c_next->next_timeout) <= now) {
-		// 		// tcpconn_t *data = rb_search(&t_root, c_next->next_timeout);
-		// 		// if(data == NULL)
-		// 		// 	printf("DATA IS NULL\n");
-		// 		// else if(data->next_timeout == c_next->next_timeout) {
-		// 		// 	printf("CONNS timeout is NOT EQUAL - c->next_timeout: %lu - data->timeout %lu\n", c_next->next_timeout, data->next_timeout); 
-		// 		// }
+		// 	if (load_acquire(&c->next_timeout) <= now) {
 		// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
-		// 		tcp_handle_timeouts(c_next, now);
+		// 		tcp_handle_timeouts(c, now);
 		// 	}
-		// 	c_next = list_next(&tcp_conns, c_next, global_link);
 		// }
 
 
-		// while(1) {
-		// 	if (preempt_needed()) {
-		// 		again = true;
-		// 		break;
-		// 	}
-		// 	// to++;
+		 while(1) {
+		 	if (preempt_needed()) {
+		 		again = true;
+		 		break;
+		 	}
 
-		// 	c_next = list_next(&tcp_conns, c_next, global_link);
+		 	c_next = list_next(&tcp_conns, c_next, global_link);
 
-		// 	if(c_next == NULL) {
-		// 		break;
-		// 	}
-		// 	if (load_acquire(&c_next->next_timeout) <= now) {
-		// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
-		// 		tcp_handle_timeouts(c_next, now);
-		// 	}
-		// }
-		// printf("LOOP RAN FROM %d -> TO %d, TCP_TIMEOUT %d\n", from, to, tcp_timeout);
+		 	if(c_next == NULL) {
+		 		break;
+		 	}
+		 	if (load_acquire(&c_next->next_timeout) <= (now - 10 * ONE_MS)) {
+		 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+		 		tcp_handle_timeouts(c_next, now);
+		 	}
+		 }
+		 //printf("LOOP RAN FROM %d -> TO %d, TCP_TIMEOUT %d\n", from, to, tcp_timeout);
 		from = to;
 		spin_unlock_np(&tcp_lock);
 
 		if (!again) 
-			timer_sleep(2 * ONE_MS);
+			timer_sleep(10 * ONE_MS);
 		
 	}
 }
@@ -1477,6 +1463,10 @@ ssize_t tcp_readv(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 {
 	spin_lock_np(&c->lock);
+	// if(!c->tx_closed && (c->pcb.state < TCP_STATE_ESTABLISHED || c->tx_exclusive) && c->non_blocking) {
+	// 	spin_unlock_np(&c->lock);
+	// 	return -1;
+	// }
 
 	/* block until there is an actionable event */
 	while (!c->tx_closed &&

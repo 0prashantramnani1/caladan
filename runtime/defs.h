@@ -23,6 +23,7 @@
 #include <runtime/rcu.h>
 #include <runtime/preempt.h>
 
+#include <stdio.h>
 
 /*
  * constant limits
@@ -99,6 +100,9 @@ struct thread {
 	uint64_t		run_start_tsc;
 	uint64_t		ready_tsc;
 	uint64_t		tlsvar;
+	uint64_t       	sc[1000][2];
+	uint64_t		sc_cnt;
+	FILE 			*fptr;
 #ifdef GC
 	struct list_node	gc_link;
 	unsigned int		onk;

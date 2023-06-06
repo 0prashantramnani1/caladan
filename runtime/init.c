@@ -3,6 +3,7 @@
  */
 
 #include <pthread.h>
+#include <stdio.h>
 
 #include <base/cpu.h>
 #include <base/init.h>
@@ -195,8 +196,11 @@ int runtime_init(const char *cfgpath, thread_fn_t main_fn, void *arg)
 	BUG_ON(ret);
 
 	log_info("spawning %d kthreads", maxks);
+	// char *arr[] = {"kthread1", "kthread2"};
 	for (i = 1; i < maxks; i++) {
 		ret = pthread_create(&tid[i], NULL, pthread_entry, NULL);
+		FILE *fptr = fopen("kthread2.txt", "w");
+		// tid[i].
 		BUG_ON(ret);
 	}
 

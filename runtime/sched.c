@@ -18,6 +18,7 @@
 #include "defs.h"
 
 uint64_t next_log_time;
+uint64_t num_uthreads;
 
 #include <runtime/tcp.h>
 
@@ -351,19 +352,33 @@ static __noreturn __noinline void schedule(void)
 	assert_spin_lock_held(&l->lock);
 	assert(l->parked == false);
 
+
+	/* update entry stat counters */
+	STAT(RESCHEDULES)++;
+	start_tsc = rdtsc();
+	STAT(PROGRAM_CYCLES) += start_tsc - last_tsc;
+
 	/* unmark busy for the stack of the last uthread */
 	if (likely(__self != NULL)) {
 		store_release(&__self->thread_running, false);
+		__self->sc[__self->sc_cnt][1] = start_tsc;
+		__self->sc_cnt++;
+		if(__self->sc_cnt == 999) {
+			__self->sc_cnt = 0;
+			for(int i=0;i<999;i++) {
+				fprintf(__self->fptr,"%llu - %llu\n", __self->sc[i][0], __self->sc[i][1]);
+			}
+		}
 		__self = NULL;
 	}
 
 	/* detect misuse of preempt disable */
 	BUG_ON((preempt_cnt & ~PREEMPT_NOT_PENDING) != 1);
 
-	/* update entry stat counters */
-	STAT(RESCHEDULES)++;
-	start_tsc = rdtsc();
-	STAT(PROGRAM_CYCLES) += start_tsc - last_tsc;
+	// /* update entry stat counters */
+	// STAT(RESCHEDULES)++;
+	// start_tsc = rdtsc();
+	// STAT(PROGRAM_CYCLES) += start_tsc - last_tsc;
 
 	/* increment the RCU generation number (even is in scheduler) */
 	store_release(&l->rcu_gen, l->rcu_gen + 1);
@@ -481,6 +496,9 @@ done:
 
 	/* update exported thread run start time */
 	th->run_start_tsc = last_tsc;
+
+	th->sc[th->sc_cnt][0] = last_tsc;
+
 	ACCESS_ONCE(l->q_ptrs->run_start_tsc) = last_tsc;
 
 	/* increment the RCU generation number (odd is in thread) */
@@ -821,6 +839,12 @@ static __always_inline thread_t *__thread_create(void)
 	th->main_thread = false;
 	th->thread_ready = false;
 	th->thread_running = false;
+	th->sc_cnt = 0;	
+
+	char buffer [100];
+  	snprintf ( buffer, 100, "uthread_%d", num_uthreads++);
+	printf("SPAWNING UTHREAD - %d\n", num_uthreads);
+	th->fptr = fopen(buffer, "w");
 
 	return th;
 }
