@@ -22,6 +22,8 @@ struct rb_root	t_root = RB_ROOT;
 uint32_t global_tcpconn_id;
 bool in_rbtree[100000];
 
+FILE* retransmit_logs = NULL;
+
 struct tcpconn_t *rb_search(struct rb_root *root, uint64_t key) {
   	struct rb_node *node = root->rb_node;
 
@@ -287,7 +289,7 @@ static void tcp_handle_timeouts(tcpconn_t *c, uint64_t now)
 	if (do_probe)
 		tcp_tx_probe_window(c);
 	if (do_retransmit)
-		thread_spawn(tcp_retransmit, c);
+		thread_spawn_type(tcp_retransmit, c, 5);
 }
 
 
@@ -319,6 +321,7 @@ static void tcp_handle_timeouts(tcpconn_t *c, uint64_t now)
 /* a periodic background thread that handles timeout events */
 static void tcp_worker(void *arg)
 {
+	retransmit_logs = fopen("dumbshit/uthread_retransmit.txt", "w");
 	tcpconn_t *c = NULL;
 	tcpconn_t *c_next = NULL;
 	// c = tcp_conn_alloc();
@@ -413,7 +416,7 @@ static void tcp_worker(void *arg)
 		 	if(c_next == NULL) {
 		 		break;
 		 	}
-		 	if (load_acquire(&c_next->next_timeout) <= (now - 10 * ONE_MS)) {
+		 	if (load_acquire(&c_next->next_timeout) <= (now - 0 * ONE_MS)) {
 		 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
 		 		tcp_handle_timeouts(c_next, now);
 		 	}
@@ -1612,6 +1615,8 @@ ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 /* resend any pending egress packets that timed out */
 static void tcp_retransmit(void *arg)
 {
+	long long int start = microtime();
+	
 	tcpconn_t *c = (tcpconn_t *)arg;
 
 	spin_lock_np(&c->lock);
@@ -1627,8 +1632,12 @@ static void tcp_retransmit(void *arg)
 	} else {
 		spin_unlock_np(&c->lock);
 	}
-
 	tcp_conn_put(c);
+
+	#ifdef SC_LOG
+		fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
+		fflush(retransmit_logs);
+	#endif
 }
 
 /**

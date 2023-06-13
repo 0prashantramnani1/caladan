@@ -100,9 +100,11 @@ struct thread {
 	uint64_t		run_start_tsc;
 	uint64_t		ready_tsc;
 	uint64_t		tlsvar;
-	uint64_t       	sc[1000][2];
+	long long int       	start;  // time when the thread started running
+	long long int 			old_start;
 	uint64_t		sc_cnt;
 	FILE 			*fptr;
+	int 			type;
 #ifdef GC
 	struct list_node	gc_link;
 	unsigned int		onk;
@@ -376,15 +378,19 @@ enum {
 	STAT_RBTREE_INSERT_FAIL,    // Number of times insert to the rb tree failed
 	STAT_RBLOOP_BREAK, 			// Number of time tcp_worker rb loop completed work and slept
 
+	STAT_JMP_DIRECT, 			// context switch without going into schedule (enter_schedule)
+	STAT_JMP, 			// context switch wit going into schedule 
+
 	/* total number of counters */
 	STAT_NR,
 };
 
 extern uint64_t stats[STAT_NR];
 
-#define LOG_INTERVAL_US                (1000 * 5000)
+#define LOG_INTERVAL_US                (1000 * 10000)
 
 #define TCP_RX_STATS 1
+#define SC_LOG       1
 
 #ifdef TCP_RX_STATS
 #define STAT_INC(stat_name, amt) do { stats[stat_name] += amt; } while (0);

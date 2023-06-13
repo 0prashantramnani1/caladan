@@ -361,14 +361,19 @@ static __noreturn __noinline void schedule(void)
 	/* unmark busy for the stack of the last uthread */
 	if (likely(__self != NULL)) {
 		store_release(&__self->thread_running, false);
-		__self->sc[__self->sc_cnt][1] = start_tsc;
-		__self->sc_cnt++;
-		if(__self->sc_cnt == 999) {
-			__self->sc_cnt = 0;
-			for(int i=0;i<999;i++) {
-				fprintf(__self->fptr,"%llu - %llu\n", __self->sc[i][0], __self->sc[i][1]);
-			}
-		}
+		// #ifdef SC_LOG
+		// 	if(__self->type == -1) {
+		// 		__self->sc[0][1] = microtime();
+		// 		// __self->sc_cnt++;
+		// 		// if(__self->sc_cnt >= 9000) {
+		// 			// __self->sc_cnt = 0;
+		// 			// for(int i=0;i<9000;i++) {
+		// 		fprintf(__self->fptr,"%ld - %llu - %llu\n", syscall(__NR_gettid),  __self->sc[0][0], __self->sc[0][1]);
+		// 		fflush(__self->fptr);
+		// 			// }
+		// 		// }
+		// 	}
+		// #endif
 		__self = NULL;
 	}
 
@@ -497,8 +502,6 @@ done:
 	/* update exported thread run start time */
 	th->run_start_tsc = last_tsc;
 
-	th->sc[th->sc_cnt][0] = last_tsc;
-
 	ACCESS_ONCE(l->q_ptrs->run_start_tsc) = last_tsc;
 
 	/* increment the RCU generation number (odd is in thread) */
@@ -507,6 +510,13 @@ done:
 	assert((l->rcu_gen & 0x1) == 0x1);
 
 	/* and jump into the next thread */
+	STAT_INC(STAT_JMP, 1);
+
+	th->start = microtime();
+	// if(th->start == th->old_start)
+		// printf("SAME START2!!!!! %llu - microtime: %llu\n", th->start, microtime());
+	th->old_start = th->start;
+	// store_release(&th->start, microtime());
 	jmp_thread(th);
 }
 
@@ -521,6 +531,13 @@ static __always_inline void enter_schedule(thread_t *curth)
 	/* prepare current thread for sleeping */
 	curth->last_cpu = k->curr_cpu;
 
+	#ifdef SC_LOG
+		if(curth->type == -1) {
+			fprintf(curth->fptr,"%ld - %llu - %llu\n", syscall(__NR_gettid), curth->start, microtime());
+			fflush(curth->fptr);
+		}
+	#endif
+
 	spin_lock(&k->lock);
 	now_tsc = rdtsc();
 
@@ -534,6 +551,7 @@ static __always_inline void enter_schedule(thread_t *curth)
 	     unlikely(now_tsc - k->last_softirq_tsc >
 		      cycles_per_us * RUNTIME_WATCHDOG_US))) {
 		jmp_runtime(schedule);
+		// printf("RETURNING!!!!!!!\n");
 		return;
 	}
 
@@ -568,6 +586,7 @@ static __always_inline void enter_schedule(thread_t *curth)
 	if (unlikely(th == curth)) {
 		th->thread_ready = false;
 		preempt_enable();
+		th->start = microtime();
 		return;
 	}
 
@@ -577,6 +596,13 @@ static __always_inline void enter_schedule(thread_t *curth)
 		STAT(LOCAL_RUNS)++;
 	else
 		STAT(REMOTE_RUNS)++;
+	STAT_INC(STAT_JMP_DIRECT, 1);
+	
+	th->start = microtime();
+	if(th->start == th->old_start)
+		printf("SAME START!!!!! %d\n", th->start);
+	th->old_start = th->start;
+	// store_release(&th->start, microtime());
 	jmp_thread_direct(curth, th);
 }
 
@@ -841,11 +867,45 @@ static __always_inline thread_t *__thread_create(void)
 	th->thread_running = false;
 	th->sc_cnt = 0;	
 
-	char buffer [100];
-  	snprintf ( buffer, 100, "uthread_%d", num_uthreads++);
-	printf("SPAWNING UTHREAD - %d\n", num_uthreads);
-	th->fptr = fopen(buffer, "w");
+	#ifdef SC_LOG
+		char buffer [1000];
+		snprintf ( buffer, 1000, "dumbshit/uthread_%d", num_uthreads++);
+		// printf("SPAWNING UTHREAD - %d with name - %s\n", num_uthreads, buffer);
+		th->fptr = fopen(buffer, "w");
+		if(th->fptr == NULL) {
+			printf("Error in opening file with name - %s error: %s\n", buffer, strerror(errno));
+		}
+	#endif
+	return th;
+}
 
+static __always_inline thread_t *__thread_create_type(void)
+{
+	struct thread *th;
+	struct stack *s;
+
+	preempt_disable();
+	th = tcache_alloc(&perthread_get(thread_pt));
+	if (unlikely(!th)) {
+		preempt_enable();
+		return NULL;
+	}
+
+	s = stack_alloc();
+	if (unlikely(!s)) {
+		tcache_free(&perthread_get(thread_pt), th);
+		preempt_enable();
+		return NULL;
+	}
+	th->last_cpu = myk()->curr_cpu;
+	preempt_enable();
+
+	th->stack = s;
+	th->main_thread = false;
+	th->thread_ready = false;
+	th->thread_running = false;
+	th->sc_cnt = 0;	
+	
 	return th;
 }
 
@@ -866,6 +926,31 @@ thread_t *thread_create(thread_fn_t fn, void *arg)
 	th->tf.rdi = (uint64_t)arg;
 	th->tf.rbp = (uint64_t)0; /* just in case base pointers are enabled */
 	th->tf.rip = (uint64_t)fn;
+	th->type   = -1;
+	th->old_start = -1;
+	gc_register_thread(th);
+	return th;
+}
+
+
+/**
+ * thread_create_type - creates a new thread of a specific type ex tcp_worker, tcp_retarnsmit, softirq etc
+ * @fn: a function pointer to the starting method of the thread
+ * @arg: an argument passed to @fn
+ *
+ * Returns 0 if successful, otherwise -ENOMEM if out of memory.
+ */
+thread_t *thread_create_type(thread_fn_t fn, void *arg, int type)
+{
+	thread_t *th = __thread_create_type();
+	if (unlikely(!th))
+		return NULL;
+
+	th->tf.rsp = stack_init_to_rsp(th->stack, thread_exit);
+	th->tf.rdi = (uint64_t)arg;
+	th->tf.rbp = (uint64_t)0; /* just in case base pointers are enabled */
+	th->tf.rip = (uint64_t)fn;
+	th->type   = type;
 	gc_register_thread(th);
 	return th;
 }
@@ -906,6 +991,22 @@ thread_t *thread_create_with_buf(thread_fn_t fn, void **buf, size_t buf_len)
 int thread_spawn(thread_fn_t fn, void *arg)
 {
 	thread_t *th = thread_create(fn, arg);
+	if (unlikely(!th))
+		return -ENOMEM;
+	thread_ready(th);
+	return 0;
+}
+
+/**
+ * thread_spawn - creates and launches a new thread
+ * @fn: a function pointer to the starting method of the thread
+ * @arg: an argument passed to @fn
+ *
+ * Returns 0 if successful, otherwise -ENOMEM if out of memory.
+ */
+int thread_spawn_type(thread_fn_t fn, void *arg, int type)
+{
+	thread_t *th = thread_create_type(fn, arg, type);
 	if (unlikely(!th))
 		return -ENOMEM;
 	thread_ready(th);

@@ -69,7 +69,9 @@ static const char *stat_names[] = {
 	"tcp_timer_upadte",
 	"next_timeout_undefined",
 	"rbtree_insert_fail",
-	"rbloop_break"
+	"rbloop_break",
+	"jmp_thread_direct",
+	"jmp_thread"
 };
 
 static const char *tc_stat_names[] = {
