@@ -71,7 +71,9 @@ static const char *stat_names[] = {
 	"rbtree_insert_fail",
 	"rbloop_break",
 	"jmp_thread_direct",
-	"jmp_thread"
+	"jmp_thread",
+	"volunteer_yield",
+	"kthread_parked",
 };
 
 static const char *tc_stat_names[] = {

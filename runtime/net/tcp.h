@@ -89,6 +89,8 @@ struct tcpconn {
 	struct tcp_pcb		pcb;
 	struct list_node	global_link;
 
+	thread_t* conn_thread; /*Uthread this connection belongs to*/
+
 	struct rb_node rb_link;
 
 	struct list_node	queue_link;

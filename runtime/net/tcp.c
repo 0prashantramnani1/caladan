@@ -404,22 +404,31 @@ static void tcp_worker(void *arg)
 		// 	}
 		// }
 
-
+		int conn_traversed = 0;
 		 while(1) {
 		 	if (preempt_needed()) {
 		 		again = true;
 		 		break;
 		 	}
 
+			if(conn_traversed >= 500) {
+				// spin_unlock_np(&tcp_lock);
+				// thread_yield();
+				// spin_lock_np(&tcp_lock);
+				break;
+			}
+
 		 	c_next = list_next(&tcp_conns, c_next, global_link);
 
 		 	if(c_next == NULL) {
 		 		break;
 		 	}
+			
 		 	if (load_acquire(&c_next->next_timeout) <= (now - 0 * ONE_MS)) {
 		 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
 		 		tcp_handle_timeouts(c_next, now);
 		 	}
+			conn_traversed++;
 		 }
 		 //printf("LOOP RAN FROM %d -> TO %d, TCP_TIMEOUT %d\n", from, to, tcp_timeout);
 		from = to;
@@ -581,6 +590,8 @@ tcpconn_t *tcp_conn_alloc(void)
 	c->pcb.rcv_wnd = TCP_WIN;
 	c->pcb.rcv_mss = tcp_calculate_mss(net_get_mtu());
 
+	c->conn_thread = NULL;
+
 	return c;
 }
 
@@ -676,6 +687,17 @@ void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking)
 {
 	c->reqs = 0;
 	c->non_blocking = nonblocking;
+}
+
+/**
+ * tcp_init_uthread - set the uthread conn belongs to
+ * @c: the socket to set
+ * @block: uthread conn belongs to
+ *
+*/
+void tcp_init_uthread(tcpconn_t *c, thread_t* t)
+{
+	c->conn_thread = t;
 }
 
 
@@ -1466,10 +1488,16 @@ ssize_t tcp_readv(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 {
 	spin_lock_np(&c->lock);
-	// if(!c->tx_closed && (c->pcb.state < TCP_STATE_ESTABLISHED || c->tx_exclusive) && c->non_blocking) {
-	// 	spin_unlock_np(&c->lock);
-	// 	return -1;
-	// }
+	if(!c->tx_closed && (c->pcb.state < TCP_STATE_ESTABLISHED || c->tx_exclusive || tcp_is_snd_full(c))
+	 && c->non_blocking) {
+		if (!c->zero_wnd && tcp_is_snd_full(c)) {
+			c->zero_wnd = true;
+			c->zero_wnd_ts = microtime();
+			tcp_timer_update(c);
+		}
+		spin_unlock_np(&c->lock);
+		return -EBUSY;
+	}
 
 	/* block until there is an actionable event */
 	while (!c->tx_closed &&
@@ -1555,22 +1583,18 @@ ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len)
 	ssize_t ret;
 
 	/* block until the data can be sent */
-	// printf("going into tcp_write_wait\n");
 	ret = tcp_write_wait(c, &winlen);
-	// printf("tcp_write wait done\n");
 	if (ret)
 		return ret;
 
 	/* actually send the data */
-	// printf("going into tcp_tx_send\n");
 	ret = tcp_tx_send(c, buf, MIN(len, winlen), true);
-	// printf("tcp_tx_send done\n");
 
 	/* catch up on any pending work */
-	// printf("going into tcp_write_finish\n");
 	tcp_write_finish(c);
-	// printf("tcp_write_finish done\n");
 
+	if(ret > 0)
+		c->reqs += ret;
 	return ret;
 }
 
@@ -1636,7 +1660,7 @@ static void tcp_retransmit(void *arg)
 
 	#ifdef SC_LOG
 		fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
-		fflush(retransmit_logs);
+		// fflush(retransmit_logs);
 	#endif
 }
 

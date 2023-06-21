@@ -298,10 +298,27 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 			seglen = MIN(end - pos, mss - mbuf_length(m));
 			m->seg_end += seglen;
 		} else {
-			m = net_tx_alloc_mbuf();
-			if (unlikely(!m)) {
-				ret = -ENOBUFS;
-				break;
+			ALLOC:
+				m = net_tx_alloc_mbuf();
+				if (unlikely(!m)) {
+					ret = -ENOBUFS;
+					// printf("UNLIKELY\n");
+					// if(c == NULL || c->conn_thread == NULL)
+					// 	printf("CONN IS NULL\n");
+					// store_release(&c->conn_thread->no_memory, true);
+					// printf("GOING INTO PREEMT DISABLE\n");
+					// preempt_disable();
+					// printf("PREEMT DISABLE done\n");
+					// if(spin_lock_held(&c->lock)) {
+					// 	printf("SPOIN LOCK HELD\n");
+					// 	thread_park_and_unlock_np(&c->lock);
+					// }
+					// else
+					// 	thread_park_and_preempt_enable();
+					// // preempt_enable();
+					// printf("RETURNING FROM PARK\n");
+					// goto ALLOC;
+					break;
 			}
 			seglen = MIN(end - pos, mss);
 			m->seg_seq = c->pcb.snd_nxt;

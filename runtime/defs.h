@@ -101,10 +101,11 @@ struct thread {
 	uint64_t		ready_tsc;
 	uint64_t		tlsvar;
 	long long int       	start;  // time when the thread started running
-	long long int 			old_start;
+	long long int       	total_execution_time;  // time when the thread started running
 	uint64_t		sc_cnt;
 	FILE 			*fptr;
 	int 			type;
+	bool 			no_memory;
 #ifdef GC
 	struct list_node	gc_link;
 	unsigned int		onk;
@@ -380,6 +381,8 @@ enum {
 
 	STAT_JMP_DIRECT, 			// context switch without going into schedule (enter_schedule)
 	STAT_JMP, 			// context switch wit going into schedule 
+	STAT_VOLUNTEER_YIELD, // Number of times data thread yields in stream_handler
+	STAT_KTHREAD_PARKED, // Number of time kthread parks in schedule() due to no work
 
 	/* total number of counters */
 	STAT_NR,
@@ -390,7 +393,7 @@ extern uint64_t stats[STAT_NR];
 #define LOG_INTERVAL_US                (1000 * 10000)
 
 #define TCP_RX_STATS 1
-#define SC_LOG       1
+// #define SC_LOG       1
 
 #ifdef TCP_RX_STATS
 #define STAT_INC(stat_name, amt) do { stats[stat_name] += amt; } while (0);
