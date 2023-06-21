@@ -10,7 +10,7 @@
 */
 
 #include <base/rbtree_augmented.h>
-#include <linux/export.h>
+#include <base/export.h>
 
 /*
  * red-black trees properties:  https://en.wikipedia.org/wiki/Rbtree

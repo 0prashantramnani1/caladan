@@ -15,7 +15,7 @@
 #ifndef _TOOLS_LINUX_RBTREE_AUGMENTED_H
 #define _TOOLS_LINUX_RBTREE_AUGMENTED_H
 
-#include <linux/compiler.h>
+#include <base/compiler.h>
 #include "rbtree.h"
 
 /*
