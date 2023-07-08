@@ -15,6 +15,10 @@
 
 static pthread_barrier_t init_barrier;
 
+volatile thread_t *__secondary_data_thread;
+
+int pthreads[2];
+
 struct init_entry {
 	const char *name;
 	int (*init)(void);
@@ -125,12 +129,13 @@ static int runtime_init_thread(void)
 
 static void *pthread_entry(void *data)
 {
+	pthreads[1] = syscall(__NR_gettid);
 	int ret;
-
 	ret = runtime_init_thread();
 	BUG_ON(ret);
 
 	pthread_barrier_wait(&init_barrier);
+	printf("ID OF SECOND KTHREAD: %d - pthread_id: %d\n", myk()->kthread_idx, syscall(__NR_gettid));
 	sched_start();
 
 	/* never reached unless things are broken */
@@ -162,6 +167,7 @@ int runtime_set_initializers(initializer_fn_t global_fn,
  */
 int runtime_init(const char *cfgpath, thread_fn_t main_fn, void *arg)
 {
+	pthreads[0] = syscall(__NR_gettid);
 	pthread_t tid[NCPU];
 	int ret, i;
 

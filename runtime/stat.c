@@ -74,6 +74,10 @@ static const char *stat_names[] = {
 	"jmp_thread",
 	"volunteer_yield",
 	"kthread_parked",
+	"tcp_write_blocked",
+	"pretend_packet_sent",
+	"secondary_thread_sched",
+	"kthread_idle"
 };
 
 static const char *tc_stat_names[] = {
@@ -86,16 +90,23 @@ static const char *tc_stat_names[] = {
 
 void print_stats(void)
 {
-       int i;
+       int i, j;
        char buf[BUFSIZE + 1];
        size_t done = 0;
 
        static uint64_t last_stats[STAT_NR];
 
-       for (i = 0; i < STAT_NR; i++) {
-               done += snprintf(buf + done, BUFSIZE - done, "%s: %lu\n", stat_names[i], stats[i]);
-               last_stats[i] = stats[i];
-       }
+    //    for (i = 0; i < STAT_NR; i++) {
+    //            done += snprintf(buf + done, BUFSIZE - done, "%s: %lu\n", stat_names[i], stats[i]);
+    //            last_stats[i] = stats[i];
+    //    }
+
+	   for (j = 0; j < nrks; j++) {
+			for (i = 0; i < STAT_NR; i++) {
+					done += snprintf(buf + done, BUFSIZE - done, "(Kthread_id-%d) %s: %lu\n", j, stat_names[i], ks[j]->stats[i]);//stats[i]);
+					last_stats[i] = stats[i];
+			}
+		}
 
        buf[done] = 0;
 

@@ -384,6 +384,12 @@ enum {
 	STAT_VOLUNTEER_YIELD, // Number of times data thread yields in stream_handler
 	STAT_KTHREAD_PARKED, // Number of time kthread parks in schedule() due to no work
 
+	STAT_TCP_WRITE_BLOCKED, // Number of time write calls which are blocked due to no ack
+
+	STAT_PRETEND_PACKET_SENT,
+	STAT_SECONDARY_THREAD_SCHED,
+	STAT_KTHREAD_IDLE,
+
 	/* total number of counters */
 	STAT_NR,
 };
@@ -396,7 +402,7 @@ extern uint64_t stats[STAT_NR];
 // #define SC_LOG       1
 
 #ifdef TCP_RX_STATS
-#define STAT_INC(stat_name, amt) do { stats[stat_name] += amt; } while (0);
+#define STAT_INC(stat_name, amt) (myk()->stats[stat_name] += amt);//do { stats[stat_name] += amt; } while (0);
 #else
 #define STAT_INC(stat_name, amt) ;
 #endif
@@ -464,6 +470,7 @@ struct kthread {
 
 	/* 11th cache-line, statistics counters */
 	uint64_t		stats[STAT_NR];
+	thread_t		*secondary_data_thread;
 };
 
 /* compile-time verification of cache-line alignment */

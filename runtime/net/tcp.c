@@ -15,8 +15,8 @@
 
 #include "tcp.h"
 
-#include <base/intmap.h>
-#include <base/rbtree.h>
+// #include <base/intmap.h>
+// #include <base/rbtree.h>
 
 struct rb_root	t_root = RB_ROOT;
 uint32_t global_tcpconn_id;
@@ -24,61 +24,61 @@ bool in_rbtree[100000];
 
 FILE* retransmit_logs = NULL;
 
-struct tcpconn_t *rb_search(struct rb_root *root, uint64_t key) {
-  	struct rb_node *node = root->rb_node;
+// struct tcpconn_t *rb_search(struct rb_root *root, uint64_t key) {
+//   	struct rb_node *node = root->rb_node;
 
-  	while (node) {
-  		tcpconn_t *data = container_of(node, tcpconn_t, rb_link);
-		// int result;
+//   	while (node) {
+//   		tcpconn_t *data = container_of(node, tcpconn_t, rb_link);
+// 		// int result;
 
-		// uint64_t node_key = data->next_timeout;
-		uint64_t node_key = data->rb_key;
-		// result = strcmp(string, data->keystring);
+// 		// uint64_t node_key = data->next_timeout;
+// 		uint64_t node_key = data->rb_key;
+// 		// result = strcmp(string, data->keystring);
 
-		if (key < node_key)
-  			node = node->rb_left;
-		else if (key > node_key)
-  			node = node->rb_right;
-		else
-  			return data;
-	}
-	return NULL;
-}
+// 		if (key < node_key)
+//   			node = node->rb_left;
+// 		else if (key > node_key)
+//   			node = node->rb_right;
+// 		else
+//   			return data;
+// 	}
+// 	return NULL;
+// }
 
-int rb_insert(struct rb_root *root, tcpconn_t *data)
-{
-  	struct rb_node **new = &(root->rb_node), *parent = NULL;
+// int rb_insert(struct rb_root *root, tcpconn_t *data)
+// {
+//   	struct rb_node **new = &(root->rb_node), *parent = NULL;
 
-  	/* Figure out where to put new node */
-  	while (*new) {
-  		tcpconn_t *this = container_of(*new, tcpconn_t, rb_link);
-  		// int result = strcmp(data->keystring, this->keystring);
+//   	/* Figure out where to put new node */
+//   	while (*new) {
+//   		tcpconn_t *this = container_of(*new, tcpconn_t, rb_link);
+//   		// int result = strcmp(data->keystring, this->keystring);
 
-		// uint64_t node_key = this->next_timeout;
-		// uint64_t data_key = data->next_timeout;
-		uint64_t node_key = this->rb_key;
-		uint64_t data_key = data->rb_key;
+// 		// uint64_t node_key = this->next_timeout;
+// 		// uint64_t data_key = data->next_timeout;
+// 		uint64_t node_key = this->rb_key;
+// 		uint64_t data_key = data->rb_key;
 		
-		parent = *new;
-  		if (data_key < node_key)
-  			new = &((*new)->rb_left);
-  		else if (data_key > node_key)
-  			new = &((*new)->rb_right);
-  		else {
-			if(node_key == data_key) {
-				if(data != this)
-					STAT_INC(STAT_SAME_KEY_RBTREE, 1);
-			}
-  			return false;
-		}
-  	}
+// 		parent = *new;
+//   		if (data_key < node_key)
+//   			new = &((*new)->rb_left);
+//   		else if (data_key > node_key)
+//   			new = &((*new)->rb_right);
+//   		else {
+// 			if(node_key == data_key) {
+// 				if(data != this)
+// 					STAT_INC(STAT_SAME_KEY_RBTREE, 1);
+// 			}
+//   			return false;
+// 		}
+//   	}
 
-  	/* Add new node and rebalance tree. */
-  	rb_link_node(&data->rb_link, parent, new);
-  	rb_insert_color(&data->rb_link, root);
+//   	/* Add new node and rebalance tree. */
+//   	rb_link_node(&data->rb_link, parent, new);
+//   	rb_insert_color(&data->rb_link, root);
 
-	return true;
-}
+// 	return true;
+// }
 
 
 
@@ -91,8 +91,8 @@ static LIST_HEAD(tcp_conns);
 static DEFINE_SPINLOCK(timeout_ordering_lock);
 // static struct list_head conns_timeout_ordering[1000];
 // uint64_t conns_timeout_ordering[2000] = {0};
-typedef UINTMAP(tcpconn_t *) conn_map;
-conn_map map;
+// typedef UINTMAP(tcpconn_t *) conn_map;
+// conn_map map;
 
 
 static thread_t *tcp_worker_th;
@@ -140,93 +140,93 @@ void tcp_timer_update(tcpconn_t *c)
 	store_release(&c->next_timeout, next_timeout);
 	return;
 
-	if(old_timeout == next_timeout) {
-		store_release(&c->next_timeout, next_timeout);
-		// spin_unlock_np(&timeout_ordering_lock);
-		return;
-	}
+	// if(old_timeout == next_timeout) {
+	// 	store_release(&c->next_timeout, next_timeout);
+	// 	// spin_unlock_np(&timeout_ordering_lock);
+	// 	return;
+	// }
 
-	// Carousel
-	spin_lock_np(&timeout_ordering_lock);
-	uint64_t old_key = get_key(c, old_timeout);
+	// // Carousel
+	// spin_lock_np(&timeout_ordering_lock);
+	// uint64_t old_key = get_key(c, old_timeout);
 
-	/* if old_timeout is used, instead of old_key
-	** rb_insert goes into deadlock -> trying to insert
-	** same c with different key leads to infinite loop in insert maybe
-	*/
-	// tcpconn_t *data = rb_search(&t_root, old_key); 
-	// if(data != NULL) {
-	if(in_rbtree[c->id]) {
-		assert(in_rbtree[c->id] == true);
-		// Early exit as rbtree already has the node and timeout has not changed much
-		// if(old_timeout == next_timeout) {
-		if(next_timeout - old_timeout <= 2 * ONE_MS) {
-			store_release(&c->next_timeout, next_timeout);
-			spin_unlock_np(&timeout_ordering_lock);
-			return;
-		}
-		rb_erase(&c->rb_link, &t_root);
-		in_rbtree[c->id] = false;
-	}
+	// /* if old_timeout is used, instead of old_key
+	// ** rb_insert goes into deadlock -> trying to insert
+	// ** same c with different key leads to infinite loop in insert maybe
+	// */
+	// // tcpconn_t *data = rb_search(&t_root, old_key); 
+	// // if(data != NULL) {
+	// if(in_rbtree[c->id]) {
+	// 	assert(in_rbtree[c->id] == true);
+	// 	// Early exit as rbtree already has the node and timeout has not changed much
+	// 	// if(old_timeout == next_timeout) {
+	// 	if(next_timeout - old_timeout <= 2 * ONE_MS) {
+	// 		store_release(&c->next_timeout, next_timeout);
+	// 		spin_unlock_np(&timeout_ordering_lock);
+	// 		return;
+	// 	}
+	// 	rb_erase(&c->rb_link, &t_root);
+	// 	in_rbtree[c->id] = false;
+	// }
 
-	store_release(&c->next_timeout, next_timeout);
+	// store_release(&c->next_timeout, next_timeout);
 	
-	if((int64_t)next_timeout == -1) {
-		// Timeout is undefined not need to store it inside the tree
-		STAT_INC(STAT_NEXT_TIMEOUT_UNDEFINED, 1);
-		spin_unlock_np(&timeout_ordering_lock);
-		return;
-	}
-	// uintmap_del(&map, old_timeout);
-	// uintmap_add(&map, c->next_timeout, c);
-	// conns_timeout_ordering[old_timeout%2000]--;
-	// conns_timeout_ordering[c->next_timeout%2000]++;
-
-	// struct rb_node *first, *last;
-  	// first = rb_first(&t_root);
-	// last = rb_last(&t_root);
-	// if(first != NULL && last != NULL) {
-	// 	tcpconn_t *f = container_of(first, tcpconn_t, rb_link);
-	// 	tcpconn_t *l = container_of(last, tcpconn_t, rb_link);
-	// 	// if(f->next_timeout >= l->next_timeout)
-	// 	printf("First entry: %lu - last entry: %lu\n", f->next_timeout, l->next_timeout);
+	// if((int64_t)next_timeout == -1) {
+	// 	// Timeout is undefined not need to store it inside the tree
+	// 	STAT_INC(STAT_NEXT_TIMEOUT_UNDEFINED, 1);
+	// 	spin_unlock_np(&timeout_ordering_lock);
+	// 	return;
 	// }
-	// if(data == NULL)
-		// printf("C IS NULL");
-	c->rb_key = get_key(c, next_timeout);
-	int ret = rb_insert(&t_root, c);
-	in_rbtree[c->id] = true;
-	// int num_elements = 0;
-	// struct rb_node *nod1;
-	// for (nod1 = rb_first(&t_root); nod1; nod1 = rb_next(nod1)) {
-	// 	num_elements++;
-	// }
-	// printf("Number of elements in rbtree %d\n", num_elements);
-	if(!ret) {
-		STAT_INC(STAT_RBTREE_INSERT_FAIL, 1);
-		// printf("Insert to rb tree failed\n");
-	}
+	// // uintmap_del(&map, old_timeout);
+	// // uintmap_add(&map, c->next_timeout, c);
+	// // conns_timeout_ordering[old_timeout%2000]--;
+	// // conns_timeout_ordering[c->next_timeout%2000]++;
 
-	// tcpconn_t* data = rb_search(&t_root, c->next_timeout);
-	// if(data == NULL)
-		// printf("DATA IS NULL\n");
-	// else if(data != c) {
-		// printf("CONNS timeout is NOT EQUAL - c->next_timeout: %lu - data->timeout %lu\n", c->next_timeout, data->next_timeout); 
+	// // struct rb_node *first, *last;
+  	// // first = rb_first(&t_root);
+	// // last = rb_last(&t_root);
+	// // if(first != NULL && last != NULL) {
+	// // 	tcpconn_t *f = container_of(first, tcpconn_t, rb_link);
+	// // 	tcpconn_t *l = container_of(last, tcpconn_t, rb_link);
+	// // 	// if(f->next_timeout >= l->next_timeout)
+	// // 	printf("First entry: %lu - last entry: %lu\n", f->next_timeout, l->next_timeout);
+	// // }
+	// // if(data == NULL)
+	// 	// printf("C IS NULL");
+	// c->rb_key = get_key(c, next_timeout);
+	// int ret = rb_insert(&t_root, c);
+	// in_rbtree[c->id] = true;
+	// // int num_elements = 0;
+	// // struct rb_node *nod1;
+	// // for (nod1 = rb_first(&t_root); nod1; nod1 = rb_next(nod1)) {
+	// // 	num_elements++;
+	// // }
+	// // printf("Number of elements in rbtree %d\n", num_elements);
+	// if(!ret) {
+	// 	STAT_INC(STAT_RBTREE_INSERT_FAIL, 1);
+	// 	// printf("Insert to rb tree failed\n");
 	// }
 
-	// struct rb_node *node;
-  	// node = rb_first(&t_root);
-	// if(node != NULL) {
-	// 	tcpconn_t *data = container_of(node, tcpconn_t, rb_link);
-	// 	printf("TIMEOUT=%" PRIu64 "\n", data->next_timeout);
-	// }
+	// // tcpconn_t* data = rb_search(&t_root, c->next_timeout);
+	// // if(data == NULL)
+	// 	// printf("DATA IS NULL\n");
+	// // else if(data != c) {
+	// 	// printf("CONNS timeout is NOT EQUAL - c->next_timeout: %lu - data->timeout %lu\n", c->next_timeout, data->next_timeout); 
+	// // }
 
-	spin_unlock_np(&timeout_ordering_lock);
+	// // struct rb_node *node;
+  	// // node = rb_first(&t_root);
+	// // if(node != NULL) {
+	// // 	tcpconn_t *data = container_of(node, tcpconn_t, rb_link);
+	// // 	printf("TIMEOUT=%" PRIu64 "\n", data->next_timeout);
+	// // }
 
-	// struct rb_node *node;
-  	// node = rb_first(&t_root);
-	// if(node != NULL)
-		// printf("TIMEOUT=%lu\n", rb_entry(node, tcpconn_t, rb_link)->next_timeout);
+	// spin_unlock_np(&timeout_ordering_lock);
+
+	// // struct rb_node *node;
+  	// // node = rb_first(&t_root);
+	// // if(node != NULL)
+	// 	// printf("TIMEOUT=%lu\n", rb_entry(node, tcpconn_t, rb_link)->next_timeout);
 }
 
 /* check for timeouts in a TCP connection */
@@ -1496,6 +1496,8 @@ static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 			tcp_timer_update(c);
 		}
 		spin_unlock_np(&c->lock);
+		if(tcp_is_snd_full(c))
+			STAT_INC(STAT_TCP_WRITE_BLOCKED, 1);
 		return -EBUSY;
 	}
 
