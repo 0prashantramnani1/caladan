@@ -360,6 +360,18 @@ enum {
 	STAT_NR,
 };
 
+extern uint64_t stats[STAT_NR];
+#define LOG_INTERVAL_US                (5 * ONE_SECOND)
+
+// #define TCP_RX_STATS 1
+
+#ifdef TCP_RX_STATS
+#define STAT_INC(stat_name, amt) do { stats[stat_name] += amt; } while (0);
+#else
+#define STAT_INC(stat_name, amt) ;
+#endif
+extern void print_stats(void);
+
 struct timer_idx {
 	uint64_t		deadline_us;
 	struct timer_entry	*e;

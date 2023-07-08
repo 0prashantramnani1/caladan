@@ -134,7 +134,7 @@ void *iok_shm_alloc(size_t size, size_t alignment, shmptr_t *shm_out)
 
 	spin_lock(&shmlock);
 	if (!r->base) {
-		r->len = estimate_shm_space();
+		r->len = estimate_shm_space();// * 4; //- mlx5_gather issue
 		r->base = mem_map_shm(iok.key, NULL, r->len, PGSIZE_2MB, true);
 		if (r->base == MAP_FAILED)
 			panic("failed to map shared memory (requested %lu bytes)", r->len);

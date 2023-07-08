@@ -19,6 +19,10 @@
 /* port 40 is permanently reserved, so should be fine for now */
 #define STAT_PORT	40
 
+#define BUFSIZE 16384
+
+uint64_t stats[STAT_NR] = {0};
+
 static const char *stat_names[] = {
 	/* scheduler counters */
 	"reschedules",
@@ -61,6 +65,26 @@ static const char *tc_stat_names[] = {
 };
 
 
+void print_stats(void)
+{
+       int i, j;
+       char buf[BUFSIZE + 1];
+       size_t done = 0;
+
+       static uint64_t last_stats[STAT_NR];
+
+		for (j = 0; j < nrks; j++) {
+			for (i = 0; i < STAT_NR; i++) {
+					done += snprintf(buf + done, BUFSIZE - done, "(Kthread_id-%d) %s: %lu\n", j, stat_names[i], ks[j]->stats[i]);//stats[i]);
+					last_stats[i] = stats[i];
+			}
+		}
+
+       buf[done] = 0;
+
+       fprintf(stderr, "Stats:\n%s", buf);
+	   fflush(stderr);
+}
 /* must correspond exactly to STAT_* enum definitions in defs.h */
 BUILD_ASSERT(ARRAY_SIZE(stat_names) == STAT_NR);
 

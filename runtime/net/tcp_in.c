@@ -118,7 +118,7 @@ static bool tcp_rx_text(tcpconn_t *c, struct mbuf *m, bool *wake, bool *fin)
 	} else {
 		/* we got an out-of-order segment */
 		STAT(RX_TCP_OUT_OF_ORDER)++;
-
+		// STAT_INC(STAT_RX_TCP_OUT_OF_ORDER, 1);
 		if (c->rxq_ooo_len >= TCP_OOO_MAX_SIZE)
 			return false;
 
@@ -277,12 +277,6 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	if (!list_empty(&c->rxq) || (tcphdr->flags & TCP_PUSH) > 0)
 		rx_th = waitq_signal(&c->rx_wq, &c->lock);
 		
-	if(c->non_blocking) {
-	//	printf("tcp_rx_conn: c is non blocking\n");
-	}
-	if(rx_th == NULL) {
-		// printf("tcp_rx_conn: waiting thread (rx_th) is null \n");
-	} 
 	// if (!rx_th && c->non_blocking) {
 	// 	poll_trigger_t *pt;
 	// 	list_for_each(&c->sock_events, pt, sock_link) {
@@ -318,8 +312,6 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	mbuf_list_free(&q);
 	if (do_ack)
 		tcp_tx_ack(c);
-
-	//printf("tcp_rx_conn: done\n");
 }
 
 static int tcp_parse_options(tcpconn_t *c, const unsigned char *ptr, int len)
