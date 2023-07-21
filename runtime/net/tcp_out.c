@@ -298,10 +298,27 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 			seglen = MIN(end - pos, mss - mbuf_length(m));
 			m->seg_end += seglen;
 		} else {
-			m = net_tx_alloc_mbuf();
-			if (unlikely(!m)) {
-				ret = -ENOBUFS;
-				break;
+			ALLOC:
+				m = net_tx_alloc_mbuf();
+				if (unlikely(!m)) {
+					ret = -ENOBUFS;
+					// printf("UNLIKELY\n");
+					// if(c == NULL || c->conn_thread == NULL)
+					// 	printf("CONN IS NULL\n");
+					// store_release(&c->conn_thread->no_memory, true);
+					// printf("GOING INTO PREEMT DISABLE\n");
+					// preempt_disable();
+					// printf("PREEMT DISABLE done\n");
+					// if(spin_lock_held(&c->lock)) {
+					// 	printf("SPOIN LOCK HELD\n");
+					// 	thread_park_and_unlock_np(&c->lock);
+					// }
+					// else
+					// 	thread_park_and_preempt_enable();
+					// // preempt_enable();
+					// printf("RETURNING FROM PARK\n");
+					// goto ALLOC;
+					break;
 			}
 			seglen = MIN(end - pos, mss);
 			m->seg_seq = c->pcb.snd_nxt;
@@ -364,6 +381,7 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 	 * in such corner cases.
 	 */
 	if (unlikely(atomic_read(&m->ref) != 1)) {
+//		printf("Retransmitting packet lost on queue\n");
 		struct mbuf *newm = net_tx_alloc_mbuf();
 		if (unlikely(!newm))
 			return -ENOMEM;
@@ -376,6 +394,7 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 		newm->txflags = OLFLAG_TCP_CHKSUM;
 		m = newm;
 	} else {
+//		printf("Retransmitting packet stuck in lRPC queue\n");
 		/* strip headers and reset ref count */
 		mbuf_reset(m, m->transport_off + sizeof(struct tcp_hdr));
 		atomic_write(&m->ref, 2);
@@ -456,6 +475,7 @@ void tcp_tx_retransmit(tcpconn_t *c)
 
 		m->timestamp = now;
 		ret = tcp_tx_retransmit_one(c, m);
+		STAT_INC(STAT_TX_RETRANSMIT, 1);
 		if (ret)
 			break;
 

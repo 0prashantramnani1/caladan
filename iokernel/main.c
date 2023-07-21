@@ -14,7 +14,7 @@
 #include "defs.h"
 #include "sched.h"
 
-#define LOG_INTERVAL_US		(1000 * 1000)
+#define LOG_INTERVAL_US		(1000 * 10000)
 struct iokernel_cfg cfg;
 struct dataplane dp;
 

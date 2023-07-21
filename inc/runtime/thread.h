@@ -24,9 +24,13 @@ extern void thread_park_and_preempt_enable(void);
 extern void thread_ready(thread_t *thread);
 extern void thread_ready_head(thread_t *thread);
 extern thread_t *thread_create(thread_fn_t fn, void *arg);
+extern thread_t *thread_create_type(thread_fn_t fn, void *arg, int type);
 extern thread_t *thread_create_with_buf(thread_fn_t fn, void **buf, size_t len);
 
 extern __thread thread_t *__self;
+extern __thread thread_t *__u_main;
+extern volatile thread_t *__secondary_data_thread;
+extern int pthreads[2];
 extern __thread unsigned int kthread_idx;
 
 static inline unsigned int get_current_affinity(void)
@@ -52,5 +56,8 @@ extern void set_uthread_specific(uint64_t val);
  */
 
 extern void thread_yield(void);
+extern void thread_yield_without_ready(void);
 extern int thread_spawn(thread_fn_t fn, void *arg);
+extern int thread_spawn_type(thread_fn_t fn, void *arg, int type);
+extern thread_t* thread_spawn_pointer(thread_fn_t fn, void *arg);
 extern void thread_exit(void) __noreturn;

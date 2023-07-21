@@ -5,6 +5,7 @@
 #include <sched.h>
 
 #include <base/stddef.h>
+#include <base/types.h>
 #include <base/lock.h>
 #include <base/list.h>
 #include <base/hash.h>
@@ -17,8 +18,26 @@
 
 #include "defs.h"
 
+uint64_t next_log_time;
+uint64_t num_uthreads;
+
+#include <runtime/tcp.h>
+
+FILE* idle_schedule = NULL;
+uint64_t sched_start_time;
+uint64_t schedule_time;
+uint64_t schedule_again_time;
+uint64_t schedule_done_time;
+uint64_t kthread_park_time;
+uint64_t logging_time;
+
+// Carousel
+// extern uint64_t conns_timeout_ordering[2000];
+
 /* the current running thread, or NULL if there isn't one */
 __thread thread_t *__self;
+__thread thread_t *__u_main;
+
 /* a pointer to the top of the per-kthread (TLS) runtime stack */
 static __thread void *runtime_stack;
 /* a pointer to the bottom of the per-kthread (TLS) runtime stack */
@@ -285,14 +304,14 @@ static bool steal_work(struct kthread *l, struct kthread *r)
 #endif
 
 	/* first try to steal directly from the runqueue */
-	lsize = l->q_ptrs->rq_head - l->q_ptrs->rq_tail;
-	rsize = ACCESS_ONCE(r->q_ptrs->rq_head) - r->q_ptrs->rq_tail;
-	if (lsize < rsize)
-		num_to_steal = MIN(div_up(rsize - lsize, 2), RUNTIME_RQ_SIZE);
-	if (num_to_steal) {
-		merge_runqueues(l, lsize, r, num_to_steal);
-		return true;
-	}
+	// lsize = l->q_ptrs->rq_head - l->q_ptrs->rq_tail;
+	// rsize = ACCESS_ONCE(r->q_ptrs->rq_head) - r->q_ptrs->rq_tail;
+	// if (lsize < rsize)
+	// 	num_to_steal = MIN(div_up(rsize - lsize, 2), RUNTIME_RQ_SIZE);
+	// if (num_to_steal) {
+	// 	merge_runqueues(l, lsize, r, num_to_steal);
+	// 	return true;
+	// }
 
 	/* otherwise try to steal softirqs */
 	if (softirq_run_locked(r)) {
@@ -320,15 +339,27 @@ static __noinline bool do_watchdog(struct kthread *l)
 /* the main scheduler routine, decides what to run next */
 static __noreturn __noinline void schedule(void)
 {
+	// if(myk()->kthread_idx == 1)
+		// printf("ID OF SECOND KTHREAD: %d - pthread_id: %d\n", myk()->kthread_idx, syscall(__NR_gettid));
 	struct kthread *r = NULL, *l = myk();
+
+
 	uint64_t start_tsc;
 	thread_t *th = NULL;
 	unsigned int start_idx;
 	unsigned int iters = 0;
 	int i, sibling;
 
+	uint64_t sched_again_start = -1;
+
 	assert_spin_lock_held(&l->lock);
 	assert(l->parked == false);
+
+
+	/* update entry stat counters */
+	STAT(RESCHEDULES)++;
+	start_tsc = rdtsc();
+	STAT(PROGRAM_CYCLES) += start_tsc - last_tsc;
 
 	/* unmark busy for the stack of the last uthread */
 	if (likely(__self != NULL)) {
@@ -339,10 +370,10 @@ static __noreturn __noinline void schedule(void)
 	/* detect misuse of preempt disable */
 	BUG_ON((preempt_cnt & ~PREEMPT_NOT_PENDING) != 1);
 
-	/* update entry stat counters */
-	STAT(RESCHEDULES)++;
-	start_tsc = rdtsc();
-	STAT(PROGRAM_CYCLES) += start_tsc - last_tsc;
+	// /* update entry stat counters */
+	// STAT(RESCHEDULES)++;
+	// start_tsc = rdtsc();
+	// STAT(PROGRAM_CYCLES) += start_tsc - last_tsc;
 
 	/* increment the RCU generation number (even is in scheduler) */
 	store_release(&l->rcu_gen, l->rcu_gen + 1);
@@ -370,8 +401,10 @@ static __noreturn __noinline void schedule(void)
 	    unlikely(start_tsc - l->last_softirq_tsc >=
 	             cycles_per_us * RUNTIME_WATCHDOG_US)) {
 		l->last_softirq_tsc = start_tsc;
-		if (do_watchdog(l))
+		if (do_watchdog(l)) {
+			// schedule_time += (microtime() - sched_start_time);
 			goto done;
+		}
 	}
 
 	/* move overflow tasks into the runqueue */
@@ -379,8 +412,15 @@ static __noreturn __noinline void schedule(void)
 		drain_overflow(l);
 
 	/* first try the local runqueue */
-	if (l->rq_head != l->rq_tail)
+	if (l->rq_head != l->rq_tail) {
+		// schedule_time += (microtime() - sched_start_time);
 		goto done;
+	}
+
+#ifdef SC_LOG
+	sched_again_start = microtime();
+	uint64_t again_counter = 0;
+#endif
 
 again:
 	/* then check for local softirqs */
@@ -413,6 +453,7 @@ again:
 	if (unlikely(get_gc_gen() != l->local_gc_gen))
 		gc_kthread_report(l);
 #endif
+		
 
 	/* keep trying to find work until the polling timeout expires */
 	last_tsc = rdtsc();
@@ -423,21 +464,55 @@ again:
 		goto again;
 	}
 
+
+
+	STAT(KTHREAD_IDLE)++;
+
+	// if(myk()->kthread_idx == 0 && __secondary_data_thread != NULL) {
+	// 	myk()->secondary_data_thread = __secondary_data_thread;
+	// }
+
+	// sibling = cpu_map[myk()->curr_cpu].sibling_core;
+	// if(myk()->kthread_idx == 1) {
+	// 	r = cpu_map[sibling].recent_kthread;
+	// } else {
+	// 	r = myk();
+	// }
+
+	// if(r->secondary_data_thread != NULL && !r->secondary_data_thread->thread_ready)
+	// printf("SECONDAY THREAD IS NOT READy\n");
+	
+	// if(__secondary_data_thread != NULL && !__secondary_data_thread->thread_ready) {
+	// 	STAT(SECONDARY_THREAD_SCHED)++;
+	// 	thread_ready(__secondary_data_thread);
+	// 	goto done;
+	// }
+
 	l->parked = true;
 	spin_unlock(&l->lock);
 
+	// uint64_t park_start = microtime();
 	/* did not find anything to run, park this kthread */
 	STAT(SCHED_CYCLES) += last_tsc - start_tsc;
 	/* we may have got a preempt signal before voluntarily yielding */
+	STAT_INC(STAT_KTHREAD_PARKED, 1);
 	kthread_park(!preempt_cede_needed(l));
 	start_tsc = rdtsc();
 	iters = 0;
 
 	spin_lock(&l->lock);
 	l->parked = false;
+	// uint64_t park_end = microtime();
+	// kthread_park_time += (park_end - park_start);
 	goto again;
 
-done:
+done: ; //Empty statement
+	#ifdef SC_LOG
+	uint64_t done_start = microtime();
+		if(sched_again_start != -1)
+			schedule_again_time += (done_start - sched_again_start);
+	#endif
+
 	/* pop off a thread and run it */
 	assert(l->rq_head != l->rq_tail);
 	th = l->rq[l->rq_tail++ % RUNTIME_RQ_SIZE];
@@ -460,6 +535,7 @@ done:
 
 	/* update exported thread run start time */
 	th->run_start_tsc = last_tsc;
+
 	ACCESS_ONCE(l->q_ptrs->run_start_tsc) = last_tsc;
 
 	/* increment the RCU generation number (odd is in thread) */
@@ -468,17 +544,65 @@ done:
 	assert((l->rcu_gen & 0x1) == 0x1);
 
 	/* and jump into the next thread */
+	STAT_INC(STAT_JMP, 1);
+
+	#ifdef SC_LOG
+		// uint64_t end  = microtime();
+		// if(end > 104 * ONE_SECOND) {
+			// fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
+			// fflush(idle_schedule);
+		// }
+		// logging_time += (microtime() - end);
+		th->start = microtime();
+		schedule_done_time += (th->start - done_start);
+		schedule_time += (th->start - sched_start_time);
+	#endif
+
+
 	jmp_thread(th);
 }
 
 static __always_inline void enter_schedule(thread_t *curth)
 {
+	// if(myk()->kthread_idx == 0 && __secondary_data_thread != NULL) {
+	// 	myk()->secondary_data_thread = __secondary_data_thread;
+	// }
+
+	// if(pthreads[0] == syscall(__NR_gettid)) {
+		// if(__secondary_data_thread == NULL) {
+			// printf("pthread1 %d - pthread2 %d - kthreadid: %d - seconday_thread is NULL on pthread %d\n", pthreads[0], pthreads[1], myk()->kthread_idx, syscall(__NR_gettid));
+		// }
+	// }
+
+
+	#ifdef TCP_RX_STATS
+		if (microtime() > next_log_time) {
+			print_stats();
+			next_log_time += LOG_INTERVAL_US;
+		}
+	#endif
+
+	// sched_start_time = microtime();
+	
+	#ifdef SC_LOG
+		if(curth->type == -1) {
+			curth->total_execution_time += (sched_start_time - curth->start);
+			if(sched_start_time > 405 * ONE_SECOND) {
+				// fprintf(curth->fptr,"%ld - %llu - %llu\n", syscall(__NR_gettid), curth->start, sched_start_time);
+				fprintf(curth->fptr,"%llu\n", curth->total_execution_time);
+				fflush(curth->fptr);
+			}
+			// logging_time += (microtime() - sched_start_time);
+		}
+		if(sched_start_time > 405 * ONE_SECOND)
+			printf("SCHEDULE TIME: %llu - Schedule Again time %llu - SChedule Done time %llu - Park_time %llu\n", schedule_time, schedule_again_time, schedule_done_time, kthread_park_time);
+	#endif
+
+
 	struct kthread *k = myk();
 	thread_t *th;
 	uint64_t now_tsc;
-
 	assert_preempt_disabled();
-
 	/* prepare current thread for sleeping */
 	curth->last_cpu = k->curr_cpu;
 
@@ -495,6 +619,7 @@ static __always_inline void enter_schedule(thread_t *curth)
 	     unlikely(now_tsc - k->last_softirq_tsc >
 		      cycles_per_us * RUNTIME_WATCHDOG_US))) {
 		jmp_runtime(schedule);
+
 		return;
 	}
 
@@ -529,6 +654,19 @@ static __always_inline void enter_schedule(thread_t *curth)
 	if (unlikely(th == curth)) {
 		th->thread_ready = false;
 		preempt_enable();
+
+		#ifdef SC_LOG
+			uint64_t end  = microtime();
+			if(end >= 6 * ONE_SECOND) {
+				fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
+				fflush(idle_schedule);
+				logging_time += (microtime() - end);
+			}
+			th->start = microtime();
+			schedule_time += (th->start - sched_start_time);
+		#endif
+		
+
 		return;
 	}
 
@@ -538,6 +676,20 @@ static __always_inline void enter_schedule(thread_t *curth)
 		STAT(LOCAL_RUNS)++;
 	else
 		STAT(REMOTE_RUNS)++;
+	STAT_INC(STAT_JMP_DIRECT, 1);
+	
+
+	#ifdef SC_LOG
+		uint64_t end  = microtime();
+		if(end >= 6 * ONE_SECOND) {
+			fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
+			fflush(idle_schedule);
+			logging_time += (microtime() - end);
+		}
+		th->start = microtime();
+		schedule_time += (th->start - sched_start_time);
+	#endif
+
 	jmp_thread_direct(curth, th);
 }
 
@@ -680,6 +832,9 @@ void thread_ready(thread_t *th)
 		ACCESS_ONCE(k->q_ptrs->oldest_tsc) = th->ready_tsc;
 	ACCESS_ONCE(k->q_ptrs->rq_head)++;
 	putk();
+	// if(preempt_enabled()) {
+		// printf("THREAD READY: preempt is enabled\n");
+	// }
 }
 
 /**
@@ -775,6 +930,19 @@ void thread_yield(void)
 	enter_schedule(curth);
 }
 
+void thread_yield_without_ready(void)
+{
+	thread_t *curth = thread_self();
+
+	/* check for softirqs */
+	softirq_run();
+
+	preempt_disable();
+	curth->thread_ready = false;
+	// thread_ready(curth);
+	enter_schedule(curth);
+}
+
 static __always_inline thread_t *__thread_create(void)
 {
 	struct thread *th;
@@ -800,7 +968,48 @@ static __always_inline thread_t *__thread_create(void)
 	th->main_thread = false;
 	th->thread_ready = false;
 	th->thread_running = false;
+	th->sc_cnt = 0;	
+	th->no_memory = false;
 
+	#ifdef SC_LOG
+		char buffer [1000];
+		snprintf ( buffer, 1000, "dumbshit/uthread_%d", num_uthreads++);
+		// printf("SPAWNING UTHREAD - %d with name - %s\n", num_uthreads, buffer);
+		th->fptr = fopen(buffer, "w");
+		if(th->fptr == NULL) {
+			printf("Error in opening file with name - %s error: %s\n", buffer, strerror(errno));
+		}
+	#endif
+	return th;
+}
+
+static __always_inline thread_t *__thread_create_type(void)
+{
+	struct thread *th;
+	struct stack *s;
+
+	preempt_disable();
+	th = tcache_alloc(&perthread_get(thread_pt));
+	if (unlikely(!th)) {
+		preempt_enable();
+		return NULL;
+	}
+
+	s = stack_alloc();
+	if (unlikely(!s)) {
+		tcache_free(&perthread_get(thread_pt), th);
+		preempt_enable();
+		return NULL;
+	}
+	th->last_cpu = myk()->curr_cpu;
+	preempt_enable();
+
+	th->stack = s;
+	th->main_thread = false;
+	th->thread_ready = false;
+	th->thread_running = false;
+	th->sc_cnt = 0;	
+	
 	return th;
 }
 
@@ -821,6 +1030,31 @@ thread_t *thread_create(thread_fn_t fn, void *arg)
 	th->tf.rdi = (uint64_t)arg;
 	th->tf.rbp = (uint64_t)0; /* just in case base pointers are enabled */
 	th->tf.rip = (uint64_t)fn;
+	th->type   = -1;
+	th->total_execution_time = 0;
+	gc_register_thread(th);
+	return th;
+}
+
+
+/**
+ * thread_create_type - creates a new thread of a specific type ex tcp_worker, tcp_retarnsmit, softirq etc
+ * @fn: a function pointer to the starting method of the thread
+ * @arg: an argument passed to @fn
+ *
+ * Returns 0 if successful, otherwise -ENOMEM if out of memory.
+ */
+thread_t *thread_create_type(thread_fn_t fn, void *arg, int type)
+{
+	thread_t *th = __thread_create_type();
+	if (unlikely(!th))
+		return NULL;
+
+	th->tf.rsp = stack_init_to_rsp(th->stack, thread_exit);
+	th->tf.rdi = (uint64_t)arg;
+	th->tf.rbp = (uint64_t)0; /* just in case base pointers are enabled */
+	th->tf.rip = (uint64_t)fn;
+	th->type   = type;
 	gc_register_thread(th);
 	return th;
 }
@@ -867,6 +1101,31 @@ int thread_spawn(thread_fn_t fn, void *arg)
 	return 0;
 }
 
+thread_t* thread_spawn_pointer(thread_fn_t fn, void *arg)
+{
+	thread_t *th = thread_create(fn, arg);
+	if (unlikely(!th))
+		return -ENOMEM;
+	thread_ready(th);
+	return th;
+}
+
+/**
+ * thread_spawn - creates and launches a new thread
+ * @fn: a function pointer to the starting method of the thread
+ * @arg: an argument passed to @fn
+ *
+ * Returns 0 if successful, otherwise -ENOMEM if out of memory.
+ */
+int thread_spawn_type(thread_fn_t fn, void *arg, int type)
+{
+	thread_t *th = thread_create_type(fn, arg, type);
+	if (unlikely(!th))
+		return -ENOMEM;
+	thread_ready(th);
+	return 0;
+}
+
 /**
  * thread_spawn_main - creates and launches the main thread
  * @fn: a function pointer to the starting method of the thread
@@ -885,9 +1144,11 @@ int thread_spawn_main(thread_fn_t fn, void *arg)
 	called = true;
 
 	th = thread_create(fn, arg);
+	__u_main = th;
 	if (!th)
 		return -ENOMEM;
 	th->main_thread = true;
+	printf("spawning main thread on pthreadid %d - kthreadid %d\n", syscall(__NR_gettid), myk()->kthread_idx);
 	thread_ready(th);
 	return 0;
 }
@@ -925,6 +1186,14 @@ void thread_exit(void)
  */
 static __noreturn void schedule_start(void)
 {
+	idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
+	next_log_time = microtime();
+	schedule_time = 0;
+	schedule_again_time = 0;
+	schedule_done_time = 0;
+	kthread_park_time = 0;
+	logging_time = 0;
+
 	struct kthread *k = myk();
 
 	/*

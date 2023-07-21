@@ -15,42 +15,218 @@
 
 #include "tcp.h"
 
+// #include <base/intmap.h>
+// #include <base/rbtree.h>
+
+struct rb_root	t_root = RB_ROOT;
+uint32_t global_tcpconn_id;
+bool in_rbtree[100000];
+
+FILE* retransmit_logs = NULL;
+
+// struct tcpconn_t *rb_search(struct rb_root *root, uint64_t key) {
+//   	struct rb_node *node = root->rb_node;
+
+//   	while (node) {
+//   		tcpconn_t *data = container_of(node, tcpconn_t, rb_link);
+// 		// int result;
+
+// 		// uint64_t node_key = data->next_timeout;
+// 		uint64_t node_key = data->rb_key;
+// 		// result = strcmp(string, data->keystring);
+
+// 		if (key < node_key)
+//   			node = node->rb_left;
+// 		else if (key > node_key)
+//   			node = node->rb_right;
+// 		else
+//   			return data;
+// 	}
+// 	return NULL;
+// }
+
+// int rb_insert(struct rb_root *root, tcpconn_t *data)
+// {
+//   	struct rb_node **new = &(root->rb_node), *parent = NULL;
+
+//   	/* Figure out where to put new node */
+//   	while (*new) {
+//   		tcpconn_t *this = container_of(*new, tcpconn_t, rb_link);
+//   		// int result = strcmp(data->keystring, this->keystring);
+
+// 		// uint64_t node_key = this->next_timeout;
+// 		// uint64_t data_key = data->next_timeout;
+// 		uint64_t node_key = this->rb_key;
+// 		uint64_t data_key = data->rb_key;
+		
+// 		parent = *new;
+//   		if (data_key < node_key)
+//   			new = &((*new)->rb_left);
+//   		else if (data_key > node_key)
+//   			new = &((*new)->rb_right);
+//   		else {
+// 			if(node_key == data_key) {
+// 				if(data != this)
+// 					STAT_INC(STAT_SAME_KEY_RBTREE, 1);
+// 			}
+//   			return false;
+// 		}
+//   	}
+
+//   	/* Add new node and rebalance tree. */
+//   	rb_link_node(&data->rb_link, parent, new);
+//   	rb_insert_color(&data->rb_link, root);
+
+// 	return true;
+// }
+
+
+
 /* protects @tcp_conns */
 static DEFINE_SPINLOCK(tcp_lock);
 /* a list of all TCP connections */
 static LIST_HEAD(tcp_conns);
 
+// CAROUSEL
+static DEFINE_SPINLOCK(timeout_ordering_lock);
+// static struct list_head conns_timeout_ordering[1000];
+// uint64_t conns_timeout_ordering[2000] = {0};
+// typedef UINTMAP(tcpconn_t *) conn_map;
+// conn_map map;
+
+
 static thread_t *tcp_worker_th;
 
 static void tcp_retransmit(void *arg);
 
+inline uint64_t get_key(tcpconn_t* c, uint64_t timeout) {
+	return (timeout << 32) | c->id;  
+}
+
 void tcp_timer_update(tcpconn_t *c)
 {
+	STAT_INC(STAT_TCP_TIMER_UPDATE, 1);
 	uint64_t next_timeout = -1L;
 	struct mbuf *m;
 	assert_spin_lock_held(&c->lock);
 
+	// TCP_STATE_TIME_WAIT - used for closing the connection, probably waiting for last
 	if (unlikely(c->pcb.state == TCP_STATE_TIME_WAIT))
 		next_timeout = c->time_wait_ts + TCP_TIME_WAIT_TIMEOUT;
-
+	
 	if (unlikely(c->pcb.state < TCP_STATE_ESTABLISHED))
 		next_timeout = c->attach_ts + TCP_CONNECT_TIMEOUT;
 
-	if (c->ack_delayed)
+	if (c->ack_delayed) {
 		next_timeout = MIN(next_timeout, c->ack_ts + TCP_ACK_TIMEOUT);
-	if (c->zero_wnd)
+		STAT_INC(STAT_ACK_TIMEOUT, 1);
+	}
+	if (c->zero_wnd) {
 		next_timeout = MIN(next_timeout, c->zero_wnd_ts + TCP_ZERO_WND_TIMEOUT);
+		STAT_INC(STAT_ZERO_WND_TIMEOUT, 1);
+	}
 
 	if (!c->tx_exclusive) {
 		m = list_top(&c->txq, struct mbuf, link);
 		if (m)
 			next_timeout = MIN(next_timeout, m->timestamp + TCP_RETRANSMIT_TIMEOUT);
+		STAT_INC(STAT_RETRANSMIT_TIMEOUT, 1);
 	}
 
 	if (!list_empty(&c->rxq_ooo))
 		next_timeout = MIN(next_timeout, microtime() + TCP_OOQ_ACK_TIMEOUT);
-
+	
+	uint64_t old_timeout = c->next_timeout;
 	store_release(&c->next_timeout, next_timeout);
+	return;
+
+	// if(old_timeout == next_timeout) {
+	// 	store_release(&c->next_timeout, next_timeout);
+	// 	// spin_unlock_np(&timeout_ordering_lock);
+	// 	return;
+	// }
+
+	// // Carousel
+	// spin_lock_np(&timeout_ordering_lock);
+	// uint64_t old_key = get_key(c, old_timeout);
+
+	// /* if old_timeout is used, instead of old_key
+	// ** rb_insert goes into deadlock -> trying to insert
+	// ** same c with different key leads to infinite loop in insert maybe
+	// */
+	// // tcpconn_t *data = rb_search(&t_root, old_key); 
+	// // if(data != NULL) {
+	// if(in_rbtree[c->id]) {
+	// 	assert(in_rbtree[c->id] == true);
+	// 	// Early exit as rbtree already has the node and timeout has not changed much
+	// 	// if(old_timeout == next_timeout) {
+	// 	if(next_timeout - old_timeout <= 2 * ONE_MS) {
+	// 		store_release(&c->next_timeout, next_timeout);
+	// 		spin_unlock_np(&timeout_ordering_lock);
+	// 		return;
+	// 	}
+	// 	rb_erase(&c->rb_link, &t_root);
+	// 	in_rbtree[c->id] = false;
+	// }
+
+	// store_release(&c->next_timeout, next_timeout);
+	
+	// if((int64_t)next_timeout == -1) {
+	// 	// Timeout is undefined not need to store it inside the tree
+	// 	STAT_INC(STAT_NEXT_TIMEOUT_UNDEFINED, 1);
+	// 	spin_unlock_np(&timeout_ordering_lock);
+	// 	return;
+	// }
+	// // uintmap_del(&map, old_timeout);
+	// // uintmap_add(&map, c->next_timeout, c);
+	// // conns_timeout_ordering[old_timeout%2000]--;
+	// // conns_timeout_ordering[c->next_timeout%2000]++;
+
+	// // struct rb_node *first, *last;
+  	// // first = rb_first(&t_root);
+	// // last = rb_last(&t_root);
+	// // if(first != NULL && last != NULL) {
+	// // 	tcpconn_t *f = container_of(first, tcpconn_t, rb_link);
+	// // 	tcpconn_t *l = container_of(last, tcpconn_t, rb_link);
+	// // 	// if(f->next_timeout >= l->next_timeout)
+	// // 	printf("First entry: %lu - last entry: %lu\n", f->next_timeout, l->next_timeout);
+	// // }
+	// // if(data == NULL)
+	// 	// printf("C IS NULL");
+	// c->rb_key = get_key(c, next_timeout);
+	// int ret = rb_insert(&t_root, c);
+	// in_rbtree[c->id] = true;
+	// // int num_elements = 0;
+	// // struct rb_node *nod1;
+	// // for (nod1 = rb_first(&t_root); nod1; nod1 = rb_next(nod1)) {
+	// // 	num_elements++;
+	// // }
+	// // printf("Number of elements in rbtree %d\n", num_elements);
+	// if(!ret) {
+	// 	STAT_INC(STAT_RBTREE_INSERT_FAIL, 1);
+	// 	// printf("Insert to rb tree failed\n");
+	// }
+
+	// // tcpconn_t* data = rb_search(&t_root, c->next_timeout);
+	// // if(data == NULL)
+	// 	// printf("DATA IS NULL\n");
+	// // else if(data != c) {
+	// 	// printf("CONNS timeout is NOT EQUAL - c->next_timeout: %lu - data->timeout %lu\n", c->next_timeout, data->next_timeout); 
+	// // }
+
+	// // struct rb_node *node;
+  	// // node = rb_first(&t_root);
+	// // if(node != NULL) {
+	// // 	tcpconn_t *data = container_of(node, tcpconn_t, rb_link);
+	// // 	printf("TIMEOUT=%" PRIu64 "\n", data->next_timeout);
+	// // }
+
+	// spin_unlock_np(&timeout_ordering_lock);
+
+	// // struct rb_node *node;
+  	// // node = rb_first(&t_root);
+	// // if(node != NULL)
+	// 	// printf("TIMEOUT=%lu\n", rb_entry(node, tcpconn_t, rb_link)->next_timeout);
 }
 
 /* check for timeouts in a TCP connection */
@@ -113,18 +289,59 @@ static void tcp_handle_timeouts(tcpconn_t *c, uint64_t now)
 	if (do_probe)
 		tcp_tx_probe_window(c);
 	if (do_retransmit)
-		thread_spawn(tcp_retransmit, c);
+		thread_spawn_type(tcp_retransmit, c, 5);
 }
+
+
+//Carousel
+// static bool iterator(intmap_index_t index, tcpconn_t *c, int *num) {
+// 	// Only dump out num nodes.
+// 	// printf("%lu=>%i\n", (unsigned long)index, c->next_timeout);
+// 	if(c == NULL || c->next_timeout == -1 || c->next_timeout == 0)
+// 		return true;
+
+// 	if (*(num--) == 0 || preempt_needed()) {
+// 		again = true;
+// 		return false;
+// 	}
+// 	printf("NEXT_TIMEOUT: %lu - NOW: %lu\n", c->next_timeout, now);
+// 	if (c->next_timeout <= now) {
+// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+// 		tcp_handle_timeouts(c, now);
+// 	} else {
+// 		return false;
+// 	}
+// 	return true;
+// }
+
+
+// uint64_t now;
+// bool again;
 
 /* a periodic background thread that handles timeout events */
 static void tcp_worker(void *arg)
 {
-	tcpconn_t *c;
+	retransmit_logs = fopen("dumbshit/uthread_retransmit.txt", "w");
+	tcpconn_t *c = NULL;
+	tcpconn_t *c_next = NULL;
+	// c = tcp_conn_alloc();
 	uint64_t now;
+	int from = 0, to = 0;
+	// uintmap_init(&map);
+	// uintmap_add(&map, 0, c);
 
+	int tcp_timeout = 0;
 	while (true) {
+		STAT_INC(STAT_TCP_WORKER_SCHED, 1);
+		if(c_next == NULL) {
+			c_next = list_top(&tcp_conns, tcpconn_t, global_link);
+		}
+		from = 0;
+		to = 0;
 		bool again = false;
+		// again = false;
 		now = microtime();
+
 
 		spin_lock_np(&tcp_lock);
 
@@ -134,19 +351,92 @@ static void tcp_worker(void *arg)
 			continue;
 		}
 
+		// int num_elements = 0;
+		// struct rb_node *nod1;
+		// for (nod1 = rb_first(&t_root); nod1; nod1 = rb_next(nod1)) {
+		// 	num_elements++;
+		// }
+		// printf("Number of elements in rbtree %d\n", num_elements);
 
-		list_for_each(&tcp_conns, c, global_link) {
-			if (preempt_needed()) {
-				again = true;
+		
+		// Carousel
+		// if(!uintmap_empty(&map)) {
+		// 	spin_lock_np(&timeout_ordering_lock);
+		// 	int max = 20000;
+		// 	uintmap_iterate(&map, iterator, &max);
+		// 	spin_unlock_np(&timeout_ordering_lock);
+		// }
+		// now = now - 5 * ONE_MS;
+		// now = now << 32;
+		// now = now | 0x00000000ffffffff;
+		// struct rb_node *node;
+
+  		// for (node = rb_first(&t_root); node; node = rb_next(node)) {
+		// 	if (preempt_needed()) {
+		// 		again = true;
+		// 		break;
+		// 	}
+
+		// 	tcpconn_t *c_next = container_of(node, tcpconn_t, rb_link);
+		// 	// printf("NOW: %lu - timeout %lu\n", now, c_next->next_timeout);
+
+		// 	if (load_acquire(&c_next->rb_key) <= now) {
+		// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+		// 		tcp_handle_timeouts(c_next, now);
+		// 	}
+		// 	else {
+		// 		STAT_INC(STAT_RBLOOP_BREAK, 1);
+		// 		break;
+		// 	}
+		// 	to++;
+		// }
+
+
+		// list_for_each(&tcp_conns, c, global_link) {
+		// 	if (preempt_needed()) {
+		// 		again = true;
+		// 		break;
+		// 	}
+
+		// 	if (load_acquire(&c->next_timeout) <= now) {
+		// 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+		// 		tcp_handle_timeouts(c, now);
+		// 	}
+		// }
+
+		int conn_traversed = 0;
+		 while(1) {
+		 	if (preempt_needed()) {
+		 		again = true;
+		 		break;
+		 	}
+
+			if(conn_traversed >= 500) {
+				// spin_unlock_np(&tcp_lock);
+				// thread_yield();
+				// spin_lock_np(&tcp_lock);
 				break;
 			}
-			if (load_acquire(&c->next_timeout) <= now)
-				tcp_handle_timeouts(c, now);
-		}
+
+		 	c_next = list_next(&tcp_conns, c_next, global_link);
+
+		 	if(c_next == NULL) {
+		 		break;
+		 	}
+			
+		 	if (load_acquire(&c_next->next_timeout) <= (now - 0 * ONE_MS)) {
+		 		STAT_INC(STAT_TCP_HANDLE_TIMEOUT, 1);
+		 		tcp_handle_timeouts(c_next, now);
+		 	}
+			conn_traversed++;
+		 }
+		 //printf("LOOP RAN FROM %d -> TO %d, TCP_TIMEOUT %d\n", from, to, tcp_timeout);
+		from = to;
 		spin_unlock_np(&tcp_lock);
 
-		if (!again)
+		if (!again) 
 			timer_sleep(10 * ONE_MS);
+		
 	}
 }
 
@@ -300,6 +590,8 @@ tcpconn_t *tcp_conn_alloc(void)
 	c->pcb.rcv_wnd = TCP_WIN;
 	c->pcb.rcv_mss = tcp_calculate_mss(net_get_mtu());
 
+	c->conn_thread = NULL;
+
 	return c;
 }
 
@@ -335,6 +627,8 @@ int tcp_conn_attach(tcpconn_t *c, struct netaddr laddr, struct netaddr raddr)
 	spin_lock_np(&tcp_lock);
 	swapvars(th, tcp_worker_th);
 	list_add_tail(&tcp_conns, &c->global_link);
+	c->id = global_tcpconn_id++;
+	STAT_INC(STAT_TCP_CONNS_LEN, 1);
 	spin_unlock_np(&tcp_lock);
 
 	if (th)
@@ -393,6 +687,17 @@ void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking)
 {
 	c->reqs = 0;
 	c->non_blocking = nonblocking;
+}
+
+/**
+ * tcp_init_uthread - set the uthread conn belongs to
+ * @c: the socket to set
+ * @block: uthread conn belongs to
+ *
+*/
+void tcp_init_uthread(tcpconn_t *c, thread_t* t)
+{
+	c->conn_thread = t;
 }
 
 
@@ -1183,6 +1488,18 @@ ssize_t tcp_readv(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 {
 	spin_lock_np(&c->lock);
+	if(!c->tx_closed && (c->pcb.state < TCP_STATE_ESTABLISHED || c->tx_exclusive || tcp_is_snd_full(c))
+	 && c->non_blocking) {
+		if (!c->zero_wnd && tcp_is_snd_full(c)) {
+			c->zero_wnd = true;
+			c->zero_wnd_ts = microtime();
+			tcp_timer_update(c);
+		}
+		spin_unlock_np(&c->lock);
+		if(tcp_is_snd_full(c))
+			STAT_INC(STAT_TCP_WRITE_BLOCKED, 1);
+		return -EBUSY;
+	}
 
 	/* block until there is an actionable event */
 	while (!c->tx_closed &&
@@ -1278,6 +1595,8 @@ ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len)
 	/* catch up on any pending work */
 	tcp_write_finish(c);
 
+	if(ret > 0)
+		c->reqs += ret;
 	return ret;
 }
 
@@ -1322,6 +1641,8 @@ ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 /* resend any pending egress packets that timed out */
 static void tcp_retransmit(void *arg)
 {
+	long long int start = microtime();
+	
 	tcpconn_t *c = (tcpconn_t *)arg;
 
 	spin_lock_np(&c->lock);
@@ -1337,8 +1658,12 @@ static void tcp_retransmit(void *arg)
 	} else {
 		spin_unlock_np(&c->lock);
 	}
-
 	tcp_conn_put(c);
+
+	#ifdef SC_LOG
+		fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
+		// fflush(retransmit_logs);
+	#endif
 }
 
 /**
@@ -1518,4 +1843,5 @@ void tcp_close(tcpconn_t *c)
 int tcp_init_late(void)
 {
 	return thread_spawn(tcp_worker, NULL);
+	return 0;
 }

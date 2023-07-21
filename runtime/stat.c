@@ -19,6 +19,10 @@
 /* port 40 is permanently reserved, so should be fine for now */
 #define STAT_PORT	40
 
+#define BUFSIZE 4096
+
+uint64_t stats[STAT_NR] = {0};
+
 static const char *stat_names[] = {
 	/* scheduler counters */
 	"reschedules",
@@ -51,6 +55,29 @@ static const char *stat_names[] = {
 	"flow_steering_cycles",
 	"rx_hw_drop",
 
+	"sigusr1_recv",
+	"sigusr2_recv",
+
+	"ack_timeout",
+	"zero_wnd_timeout",
+	"retransmit_timeout",
+	"tx_retransmit",
+	"tcp_handle_timeout",
+	"tcp_conns_len",
+	"tcp_worker_scheduled",
+	"same_key_rbtree",
+	"tcp_timer_upadte",
+	"next_timeout_undefined",
+	"rbtree_insert_fail",
+	"rbloop_break",
+	"jmp_thread_direct",
+	"jmp_thread",
+	"volunteer_yield",
+	"kthread_parked",
+	"tcp_write_blocked",
+	"pretend_packet_sent",
+	"secondary_thread_sched",
+	"kthread_idle"
 };
 
 static const char *tc_stat_names[] = {
@@ -59,6 +86,32 @@ static const char *tc_stat_names[] = {
 	"pool_alloc",
 	"pool_free"
 };
+
+
+void print_stats(void)
+{
+       int i, j;
+       char buf[BUFSIZE + 1];
+       size_t done = 0;
+
+       static uint64_t last_stats[STAT_NR];
+
+    //    for (i = 0; i < STAT_NR; i++) {
+    //            done += snprintf(buf + done, BUFSIZE - done, "%s: %lu\n", stat_names[i], stats[i]);
+    //            last_stats[i] = stats[i];
+    //    }
+
+	   for (j = 0; j < nrks; j++) {
+			for (i = 0; i < STAT_NR; i++) {
+					done += snprintf(buf + done, BUFSIZE - done, "(Kthread_id-%d) %s: %lu\n", j, stat_names[i], ks[j]->stats[i]);//stats[i]);
+					last_stats[i] = stats[i];
+			}
+		}
+
+       buf[done] = 0;
+
+       fprintf(stderr, "Stats:\n%s", buf);
+}
 
 
 /* must correspond exactly to STAT_* enum definitions in defs.h */

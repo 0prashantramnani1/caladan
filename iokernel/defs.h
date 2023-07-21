@@ -306,6 +306,9 @@ enum {
 
 	ADJUSTS,
 
+	SIGUSR1_SENT,
+	SIGUSR2_SENT,
+
 	NR_STATS,
 
 };

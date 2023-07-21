@@ -172,7 +172,6 @@ drain:
 /* fast path for handling ingress packets for TCP connections */
 void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 {
-	//printf("in TCP rx CONN \n");
 	tcpconn_t *c = container_of(e, tcpconn_t, e);
 	struct list_head q;
 	thread_t *rx_th = NULL;
@@ -192,7 +191,6 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	tcphdr = mbuf_pull_hdr_or_null(m, *tcphdr);
 	if (unlikely(!tcphdr)) {
 		mbuf_free(m);
-	//	printf("tcp_rx_conn: return 1\n");
 		return;
 	}
 
@@ -203,13 +201,11 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	hdr_len = tcphdr->off * sizeof(uint32_t);
 	if (unlikely(hdr_len < sizeof(struct tcp_hdr))) {
 		mbuf_free(m);
-	//	printf("tcp_rx_conn: return 2\n");
 		return;
 	}
 	len = ntoh16(iphdr->len) - sizeof(*iphdr) - hdr_len;
 	if (unlikely(len > mbuf_length(m) || len > c->pcb.rcv_mss)) {
 		mbuf_free(m);
-	//	printf("tcp_rx_conn: return 3\n");
 		return;
 	}
 
@@ -243,7 +239,6 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	slow_path |= wraps_gt(ack, snd_nxt);
 
 	if (unlikely(slow_path)) {
-	//	printf("tcp_rx_conn: return 4\n");
 		return __tcp_rx_conn(c, m, ack, snd_nxt, win, optp, optlen);
 	}
 
@@ -525,7 +520,16 @@ __tcp_rx_conn(tcpconn_t *c, struct mbuf *m, uint32_t ack, uint32_t snd_nxt,
 	}
 	if (snd_was_full && !tcp_is_snd_full(c))
 		waitq_release_start(&c->tx_wq, &waiters);
+	
 
+	// if(load_acquire(&c->conn_thread->no_memory)) {
+	// 	if(c->conn_thread->no_memory == true)
+	// 		printf("NO_MEMORY IS TRUE\n");
+	// 	store_release(&c->conn_thread->no_memory, false);
+	// 	printf("GOING INTO THREAD READy\n");
+	// 	// thread_ready(c->conn_thread);
+	// 	// waitq_release_start(&c->tx_wq, &waiters);
+	// } 
 	/*
 	 * Fast retransmit -> detect a duplicate ACK if:
 	 * 1. The ACK number is the same as the largest seen.

@@ -23,6 +23,7 @@
 #include <runtime/rcu.h>
 #include <runtime/preempt.h>
 
+#include <stdio.h>
 
 /*
  * constant limits
@@ -99,6 +100,12 @@ struct thread {
 	uint64_t		run_start_tsc;
 	uint64_t		ready_tsc;
 	uint64_t		tlsvar;
+	long long int       	start;  // time when the thread started running
+	long long int       	total_execution_time;  // time when the thread started running
+	uint64_t		sc_cnt;
+	FILE 			*fptr;
+	int 			type;
+	bool 			no_memory;
 #ifdef GC
 	struct list_node	gc_link;
 	unsigned int		onk;
@@ -356,9 +363,51 @@ enum {
 	STAT_FLOW_STEERING_CYCLES,
 	STAT_RX_HW_DROP,
 
+	SIGUSR1_RECV,			// Number of times sigusr1 is received by runtime
+	SIGUSR2_RECV,			// Number of times sigusr2 is received by runtime
+
+	STAT_ACK_TIMEOUT,		 // Number of times tcp_update_timer updates c->next_timeout due to ack delay
+	STAT_ZERO_WND_TIMEOUT,	 // Number of times tcp_update_timer updates c->next_timeout due to zero wnd
+	STAT_RETRANSMIT_TIMEOUT, // Number of times tcp_update_timer updates c->next_timeout due to retrasnmit
+	STAT_TX_RETRANSMIT,		// Number of times tcp_tx_retransmit_one function is called
+	STAT_TCP_HANDLE_TIMEOUT, // Number of times tcp_worker finds timedout connections (c->next_timeout <= now) -> tcp_handle_timeout function is called
+	STAT_TCP_CONNS_LEN,		// Verifying the number of connections in tcp_conns struct
+	STAT_TCP_WORKER_SCHED,  // Number of times tcp_worker uthread is scheduled
+	STAT_SAME_KEY_RBTREE,	// Number of times insert failed sure to same key
+	STAT_TCP_TIMER_UPDATE, // Number of time tcp_timer_update function is called
+	STAT_NEXT_TIMEOUT_UNDEFINED, // Number of times next_timeout is -1L
+	STAT_RBTREE_INSERT_FAIL,    // Number of times insert to the rb tree failed
+	STAT_RBLOOP_BREAK, 			// Number of time tcp_worker rb loop completed work and slept
+
+	STAT_JMP_DIRECT, 			// context switch without going into schedule (enter_schedule)
+	STAT_JMP, 			// context switch wit going into schedule 
+	STAT_VOLUNTEER_YIELD, // Number of times data thread yields in stream_handler
+	STAT_KTHREAD_PARKED, // Number of time kthread parks in schedule() due to no work
+
+	STAT_TCP_WRITE_BLOCKED, // Number of time write calls which are blocked due to no ack
+
+	STAT_PRETEND_PACKET_SENT,
+	STAT_SECONDARY_THREAD_SCHED,
+	STAT_KTHREAD_IDLE,
+
 	/* total number of counters */
 	STAT_NR,
 };
+
+extern uint64_t stats[STAT_NR];
+
+#define LOG_INTERVAL_US                (1000 * 10000)
+
+#define TCP_RX_STATS 1
+// #define SC_LOG       1
+
+#ifdef TCP_RX_STATS
+#define STAT_INC(stat_name, amt) (myk()->stats[stat_name] += amt);//do { stats[stat_name] += amt; } while (0);
+#else
+#define STAT_INC(stat_name, amt) ;
+#endif
+
+extern void print_stats(void);
 
 struct timer_idx {
 	uint64_t		deadline_us;
@@ -421,6 +470,7 @@ struct kthread {
 
 	/* 11th cache-line, statistics counters */
 	uint64_t		stats[STAT_NR];
+	thread_t		*secondary_data_thread;
 };
 
 /* compile-time verification of cache-line alignment */

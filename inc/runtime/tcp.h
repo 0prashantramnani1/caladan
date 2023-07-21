@@ -5,6 +5,7 @@
 #pragma once
 
 #include <runtime/net.h>
+#include <runtime/thread.h>
 #include <sys/uio.h>
 #include <sys/socket.h>
 
@@ -26,6 +27,8 @@ struct tcp_read_arg {
 };
 typedef struct tcp_read_arg tcp_read_arg_t;
 
+// Caraousel
+// extern uint64_t conns_timeout_ordering[2000];
 
 extern int tcp_dial(struct netaddr laddr, struct netaddr raddr,
 		    tcpconn_t **c_out);
@@ -49,6 +52,7 @@ extern int tcp_shutdown(tcpconn_t *c, int how);
 extern void tcp_abort(tcpconn_t *c);
 extern void tcp_close(tcpconn_t *c);
 extern void tcp_set_nonblocking(tcpconn_t *c, bool nonblocking);
+extern void tcp_init_uthread(tcpconn_t *c, thread_t* t);
 extern int tcp_get_raddr_port(tcpconn_t *c);
 extern void tcpqueue_set_nonblocking(tcpqueue_t *c, bool nonblocking);
 extern struct list_head *tcp_get_triggers(tcpconn_t *c);

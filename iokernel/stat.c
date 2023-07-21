@@ -27,6 +27,8 @@ static const char *stat_names[] = {
 	"RQ_GRANT",
 	"RX_GRANT",
 	"ADJUSTS",
+	"SIGUSR1_SENT",
+	"SIGUSR2_SENT",
 };
 
 BUILD_ASSERT(ARRAY_SIZE(stat_names) == NR_STATS);
@@ -40,7 +42,7 @@ void print_stats(void)
 	static uint64_t last_stats[NR_STATS];
 
 	for (i = 0; i < NR_STATS; i++) {
-		done += snprintf(buf + done, BUFSIZE - done, "%s: %lu\n", stat_names[i], stats[i] - last_stats[i]);
+		done += snprintf(buf + done, BUFSIZE - done, "%s: %lu\n", stat_names[i], stats[i]); // - last_stats[i]);
 		last_stats[i] = stats[i];
 	}
 

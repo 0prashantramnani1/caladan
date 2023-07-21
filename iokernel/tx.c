@@ -287,6 +287,7 @@ full:
 	/* apply back pressure if the NIC TX ring was full */
 	if (unlikely(ret < n_pkts)) {
 		STAT_INC(TX_BACKPRESSURE, n_pkts - ret);
+		printf("BACKPRESSURE: suppose to send: %d - sent: %d\n", n_pkts, ret);
 		n_pkts -= ret;
 		for (i = 0; i < n_pkts; i++)
 			bufs[i] = bufs[ret + i];

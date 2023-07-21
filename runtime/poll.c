@@ -303,9 +303,10 @@ int poll_cb_once(poll_waiter_t *w)
 }
 
 /**
- * poll_cb_once - blocks till an event is triggered and loops over all
- * triggered events and calls their callbacks
+ * poll_return_triggers - Checks waiter w and returns upto "max_events" triggerd events
  * @w: the waiter to wait on
+ * @events: events array
+ * @max_events: max number of events function can return
  */
 int poll_return_triggers(poll_waiter_t *w, poll_trigger_t **events, int max_events)
 {

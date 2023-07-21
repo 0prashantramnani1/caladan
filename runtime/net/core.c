@@ -15,6 +15,8 @@
 
 #include "defs.h"
 
+FILE* softirq_1 = NULL;
+FILE* softirq_2 = NULL;
 
 #ifndef MAX
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -204,9 +206,7 @@ static void net_rx_one(struct mbuf *m)
 
 	case IPPROTO_UDP:
 	case IPPROTO_TCP:
-		//printf("net_rx_one: calling net_rx_trans \n");
 		net_rx_trans(m);
-		//printf("net_rx_one: net_rx_trans done\n");
 		break;
 
 	default:
@@ -237,6 +237,8 @@ void net_rx_batch(struct mbuf **ms, unsigned int nr)
 
 static void iokernel_softirq_poll(struct kthread *k)
 {
+	uint64_t start = microtime();
+	uint64_t packets_processed = 0;
 	struct rx_net_hdr *hdr;
 	struct mbuf *m;
 	uint64_t cmd;
@@ -245,7 +247,7 @@ static void iokernel_softirq_poll(struct kthread *k)
 	while (true) {
 		if (!lrpc_recv(&k->rxq, &cmd, &payload))
 			break;
-
+		packets_processed++;
 		switch (cmd) {
 		case RX_NET_RECV:
 			hdr = shmptr_to_ptr(&netcfg.rx_region,
@@ -267,11 +269,27 @@ static void iokernel_softirq_poll(struct kthread *k)
 			panic("net: invalid RXQ cmd '%ld'", cmd);
 		}
 	}
+
+	if(syscall(__NR_gettid) == pthreads[0]) {
+		fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+		fflush(softirq_1);
+	}
+	else {
+		fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+		fflush(softirq_2);
+	}
+
+	// #ifdef SC_LOG
+	// fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
+	// #endif
 }
 
 static void iokernel_softirq(void *arg)
 {
 	struct kthread *k = arg;
+
+	softirq_1 = fopen("dumbshit/irq2.txt", "w");
+	softirq_2 = fopen("dumbshit/irq1.txt", "w");
 
 	while (true) {
 		iokernel_softirq_poll(k);
@@ -391,6 +409,7 @@ static void net_tx_raw(struct mbuf *m)
 	if (unlikely(net_ops.tx_single(m))) {
 		mbufq_push_tail(&k->txpktq_overflow, m);
 		STAT(TXQ_OVERFLOW)++;
+		STAT_INC(STAT_TXQ_OVERFLOW, 1);
 	}
 
 	putk();
