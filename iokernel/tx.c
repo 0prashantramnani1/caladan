@@ -374,5 +374,7 @@ int tx_init(void)
 		return -1;
 	}
 
+	__asm__ __volatile__("xchg %%rcx, %%rcx;" : : "c"(1025));
+
 	return 0;
 }

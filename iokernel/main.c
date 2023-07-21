@@ -95,6 +95,8 @@ void dataplane_loop(void)
 			rte_lcore_id());
 	fflush(stdout);
 
+	__asm__ __volatile__("xchg %%rcx, %%rcx;" : : "c"(1029));
+
 	/* run until quit or killed */
 	for (;;) {
 		work_done = false;
