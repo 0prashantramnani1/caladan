@@ -700,6 +700,13 @@ void tcp_init_uthread(tcpconn_t *c, thread_t* t)
 	c->conn_thread = t;
 }
 
+void tcp_put_table_id(tcpconn_t *c, int id) {
+	return c->table_id = id;
+}
+
+int tcp_get_table_id(tcpconn_t *c) {
+	return c->table_id;
+}
 
 struct list_head *tcp_get_triggers(tcpconn_t *c)
 {

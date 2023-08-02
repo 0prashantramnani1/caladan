@@ -56,6 +56,8 @@ extern void tcp_init_uthread(tcpconn_t *c, thread_t* t);
 extern int tcp_get_raddr_port(tcpconn_t *c);
 extern void tcpqueue_set_nonblocking(tcpqueue_t *c, bool nonblocking);
 extern struct list_head *tcp_get_triggers(tcpconn_t *c);
+extern void tcp_put_table_id(tcpconn_t *c, int id);
+extern int tcp_get_table_id(tcpconn_t *c);
 extern struct list_head *tcpqueue_get_triggers(tcpqueue_t *q);
 extern void tcpqueue_check_triggers(tcpqueue_t *q);
 extern void tcpconn_check_triggers(tcpconn_t *c);

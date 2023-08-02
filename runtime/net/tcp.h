@@ -133,6 +133,7 @@ struct tcpconn {
 	bool			ack_delayed;
 	int			rep_acks;
 	int			acks_delayed_cnt;
+	int 		table_id;
 };
 
 extern tcpconn_t *tcp_conn_alloc(void);
