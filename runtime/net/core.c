@@ -270,14 +270,14 @@ static void iokernel_softirq_poll(struct kthread *k)
 		}
 	}
 
-	if(syscall(__NR_gettid) == pthreads[0]) {
-		fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
-		fflush(softirq_1);
-	}
-	else {
-		fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
-		fflush(softirq_2);
-	}
+	// if(syscall(__NR_gettid) == pthreads[0]) {
+	// 	fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+	// 	fflush(softirq_1);
+	// }
+	// else {
+	// 	fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+	// 	fflush(softirq_2);
+	// }
 
 	// #ifdef SC_LOG
 	// fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
