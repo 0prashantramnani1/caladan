@@ -84,12 +84,12 @@ static inline void ksched_enqueue_intr(unsigned int core, int type)
 	switch (type) {
 	case KSCHED_INTR_CEDE:
 		signum = SIGUSR1;
-		STAT_INC(SIGUSR1_SENT, 1);
+		// STAT_INC(SIGUSR1_SENT, 1);
 		break;
 
 	case KSCHED_INTR_YIELD:
 		signum = SIGUSR2;
-		STAT_INC(SIGUSR2_SENT, 1);
+		// STAT_INC(SIGUSR2_SENT, 1);
 		break;
 
 	default:

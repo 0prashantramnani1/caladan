@@ -155,7 +155,7 @@ static void rx_one_pkt(struct rte_mbuf *buf)
 		rte_mbuf_refcnt_update(buf, n_sent - 1);
 		return;
 	}
-
+	// printf("UNHANDLED RX\n");
 	/* everything else */
 	log_debug("rx: unhandled packet with MAC %x %x %x %x %x %x",
 		 ptr_dst_addr->addr_bytes[0], ptr_dst_addr->addr_bytes[1],
@@ -175,8 +175,8 @@ bool rx_burst(void)
 
 	/* retrieve packets from NIC queue */
 	nb_rx = rte_eth_rx_burst(dp.port, 0, bufs, IOKERNEL_RX_BURST_SIZE);
-	// if(nb_rx)
-	// 	printf("rx_burst: nb_rx = %d\n", nb_rx);
+	// if(nb_rx == 0)
+		// printf("rx_burst: nb_rx = %d\n", nb_rx);
 	STAT_INC(RX_PULLED, nb_rx);
 	if (nb_rx > 0)
 		log_debug("rx: received %d packets on port %d", nb_rx, dp.port);

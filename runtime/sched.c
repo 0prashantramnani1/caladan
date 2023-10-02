@@ -304,14 +304,14 @@ static bool steal_work(struct kthread *l, struct kthread *r)
 #endif
 
 	/* first try to steal directly from the runqueue */
-	// lsize = l->q_ptrs->rq_head - l->q_ptrs->rq_tail;
-	// rsize = ACCESS_ONCE(r->q_ptrs->rq_head) - r->q_ptrs->rq_tail;
-	// if (lsize < rsize)
-	// 	num_to_steal = MIN(div_up(rsize - lsize, 2), RUNTIME_RQ_SIZE);
-	// if (num_to_steal) {
-	// 	merge_runqueues(l, lsize, r, num_to_steal);
-	// 	return true;
-	// }
+	lsize = l->q_ptrs->rq_head - l->q_ptrs->rq_tail;
+	rsize = ACCESS_ONCE(r->q_ptrs->rq_head) - r->q_ptrs->rq_tail;
+	if (lsize < rsize)
+		num_to_steal = MIN(div_up(rsize - lsize, 2), RUNTIME_RQ_SIZE);
+	if (num_to_steal) {
+		merge_runqueues(l, lsize, r, num_to_steal);
+		return true;
+	}
 
 	/* otherwise try to steal softirqs */
 	if (softirq_run_locked(r)) {
@@ -1186,6 +1186,7 @@ void thread_exit(void)
  */
 static __noreturn void schedule_start(void)
 {
+	printf("IN SCHEDULE START2 FOR THREAD ID: %ld\n", syscall(__NR_gettid));
 	idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
 	next_log_time = microtime();
 	schedule_time = 0;
@@ -1219,6 +1220,7 @@ static __noreturn void schedule_start(void)
  */
 void sched_start(void)
 {
+	printf("IN SCHED STAR FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
 	preempt_disable();
 	jmp_runtime_nosave(schedule_start);
 }

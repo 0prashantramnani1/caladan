@@ -229,6 +229,9 @@ bool tx_burst(void)
 		t = ts[idx];
 		ret = tx_drain_queue(t, IOKERNEL_TX_BURST_SIZE - n_pkts,
 				     &hdrs[n_pkts]);
+		// if(ret == 0) {
+			// printf("TX DRAIN QUEUE IS empty\n");
+		// }
 		for (j = n_pkts; j < n_pkts + ret; j++)
 			threads[j] = t;
 		n_pkts += ret;
@@ -277,6 +280,9 @@ full:
 	ret = rte_eth_tx_burst(dp.port, 0, bufs, n_pkts);
 	log_debug("tx: transmitted %d packets on port %d", ret, dp.port);
 
+	if(ret < n_pkts) {
+		printf("BACKPRESSURE: suppose to send: %d - sent: %d\n", n_pkts, ret);
+	}
 
 	end_t = clock();
 

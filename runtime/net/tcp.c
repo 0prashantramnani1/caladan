@@ -1496,8 +1496,10 @@ static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 			tcp_timer_update(c);
 		}
 		spin_unlock_np(&c->lock);
-		if(tcp_is_snd_full(c))
+		if(tcp_is_snd_full(c)) {
+			// printf("TCP IS FULL\n");
 			STAT_INC(STAT_TCP_WRITE_BLOCKED, 1);
+		}
 		return -EBUSY;
 	}
 

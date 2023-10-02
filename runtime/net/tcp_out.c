@@ -300,6 +300,7 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 		} else {
 			ALLOC:
 				m = net_tx_alloc_mbuf();
+				// printf("Address of TX MBUF: %p\n", m);
 				if (unlikely(!m)) {
 					ret = -ENOBUFS;
 					// printf("UNLIKELY\n");
