@@ -248,11 +248,13 @@ static void iokernel_softirq_poll(struct kthread *k)
 
 		switch (cmd) {
 		case RX_NET_RECV:
+			// printf("Received packet from iokernel\n");
 			hdr = shmptr_to_ptr(&netcfg.rx_region,
 					    (shmptr_t)payload,
 					    MBUF_DEFAULT_LEN);
 			m = net_rx_alloc_mbuf(hdr);
 			if (unlikely(!m)) {
+				printf("Dropping\n");
 				STAT(DROPS)++;
 				continue;
 			}
