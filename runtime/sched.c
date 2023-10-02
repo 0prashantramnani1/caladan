@@ -1187,7 +1187,7 @@ void thread_exit(void)
 static __noreturn void schedule_start(void)
 {
 	printf("IN SCHEDULE START2 FOR THREAD ID: %ld\n", syscall(__NR_gettid));
-	idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
+	// idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
 	next_log_time = microtime();
 	schedule_time = 0;
 	schedule_again_time = 0;

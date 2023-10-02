@@ -321,7 +321,7 @@ static void tcp_handle_timeouts(tcpconn_t *c, uint64_t now)
 /* a periodic background thread that handles timeout events */
 static void tcp_worker(void *arg)
 {
-	retransmit_logs = fopen("dumbshit/uthread_retransmit.txt", "w");
+	// retransmit_logs = fopen("dumbshit/uthread_retransmit.txt", "w");
 	tcpconn_t *c = NULL;
 	tcpconn_t *c_next = NULL;
 	// c = tcp_conn_alloc();
