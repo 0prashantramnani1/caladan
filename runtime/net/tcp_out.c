@@ -12,6 +12,8 @@
 #include "tcp.h"
 #include "defs.h"
 
+long long int tcp_retransmits = 0;
+
 static void tcp_tx_release_mbuf(struct mbuf *m)
 {
 	if (atomic_dec_and_test(&m->ref))
@@ -477,6 +479,7 @@ void tcp_tx_retransmit(tcpconn_t *c)
 		m->timestamp = now;
 		ret = tcp_tx_retransmit_one(c, m);
 		STAT_INC(STAT_TX_RETRANSMIT, 1);
+		tcp_retransmits++;
 		if (ret)
 			break;
 
