@@ -30,6 +30,9 @@ typedef struct tcp_read_arg tcp_read_arg_t;
 // Caraousel
 // extern uint64_t conns_timeout_ordering[2000];
 
+extern uint64_t rtt;
+extern uint64_t packet_counter;
+
 extern int tcp_dial(struct netaddr laddr, struct netaddr raddr,
 		    tcpconn_t **c_out);
 extern int tcp_dial_affinity(uint32_t affinity, struct netaddr raddr,

@@ -15,6 +15,9 @@
 
 #include "tcp.h"
 
+uint64_t rtt = 0;
+uint64_t packet_counter = 0;
+
 // #include <base/intmap.h>
 // #include <base/rbtree.h>
 
@@ -467,6 +470,8 @@ void tcp_conn_ack(tcpconn_t *c, struct list_head *freeq)
 			break;
 
 		list_pop(&c->txq, struct mbuf, link);
+        rtt += microtime() - m->timestamp;
+        packet_counter++;
 		list_add_tail(freeq, &m->link);
 	}
 }
