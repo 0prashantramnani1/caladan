@@ -9,6 +9,7 @@
 #include <base/stddef.h>
 
 typedef	uint32_t tcp_seq;
+extern long long int tcp_retransmits;
 
 /*
  * TCP header.

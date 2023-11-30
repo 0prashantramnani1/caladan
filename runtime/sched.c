@@ -36,7 +36,7 @@ uint64_t logging_time;
 
 /* the current running thread, or NULL if there isn't one */
 __thread thread_t *__self;
-__thread thread_t *__u_main;
+thread_t *__u_main;
 
 /* a pointer to the top of the per-kthread (TLS) runtime stack */
 static __thread void *runtime_stack;
@@ -1186,7 +1186,7 @@ void thread_exit(void)
  */
 static __noreturn void schedule_start(void)
 {
-	printf("IN SCHEDULE START2 FOR THREAD ID: %ld\n", syscall(__NR_gettid));
+	printf("IN SCHEDULE START FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
 	// idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
 	next_log_time = microtime();
 	schedule_time = 0;
@@ -1220,7 +1220,7 @@ static __noreturn void schedule_start(void)
  */
 void sched_start(void)
 {
-	printf("IN SCHED STAR FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
+	// printf("IN SCHED STAR FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
 	preempt_disable();
 	jmp_runtime_nosave(schedule_start);
 }

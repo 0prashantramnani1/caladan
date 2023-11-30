@@ -1220,9 +1220,9 @@ static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 	}
 	// printf("1.2\n");
 	/* block until there is an actionable event */
-	if(list_empty(&c->rxq)) {
-		printf("LIST IS EMPTY\n");
-	}
+	// if(list_empty(&c->rxq)) {
+		// printf("Connection receiver queue list is empty\n");
+	// }
 	while (!c->rx_closed && (c->rx_exclusive || list_empty(&c->rxq)))
 		waitq_wait(&c->rx_wq, &c->lock);
 	// printf("1.3\n");

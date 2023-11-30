@@ -238,7 +238,6 @@ void kthread_wait_to_attach(void)
 	printf("GOING INTO IOCTL THREAD_id: %ld\n", syscall(__NR_gettid));
 	do {
 		s = ioctl(ksched_fd, KSCHED_IOC_START, 0);
-		printf("S: %d\n", s);
 	} while (s < 0);
 
 	k->curr_cpu = s;

@@ -396,7 +396,7 @@ enum {
 
 extern uint64_t stats[STAT_NR];
 
-#define LOG_INTERVAL_US                (1000 * 10000)
+#define LOG_INTERVAL_US                (1000 * 1000)
 
 // #define TCP_RX_STATS 1
 // #define SC_LOG       1
