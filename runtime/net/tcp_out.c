@@ -260,6 +260,12 @@ int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 	return ret;
 }
 
+void memcpy_user(char* dst, char* src, int n){
+	for(int i=0;i<n;i++) {
+		dst[i] = src[i];
+	}
+}
+
 /**
  * tcp_tx_send - transmit a buffer on a TCP connection
  * @c: the TCP connection
@@ -331,7 +337,9 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 			m->release = tcp_tx_release_mbuf;
 		}
 
-		memcpy(mbuf_put(m, seglen), pos, seglen);
+		// memcpy(mbuf_put(m, seglen), pos, seglen);
+		memcpy_user(mbuf_put(m, seglen), pos, seglen);
+
 		store_release(&c->pcb.snd_nxt, c->pcb.snd_nxt + seglen);
 		pos += seglen;
 
