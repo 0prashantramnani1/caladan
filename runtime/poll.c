@@ -4,6 +4,7 @@
 
 #include <runtime/poll.h>
 #include <runtime/smalloc.h>
+#include "defs.h"
 #include "net/mbufq.h"
 
 /**
@@ -310,6 +311,7 @@ int poll_cb_once(poll_waiter_t *w)
  */
 int poll_return_triggers(poll_waiter_t *w, poll_trigger_t **events, int max_events)
 {
+	// printf("KTREAD_ID: %d IN POLL RETURN TRIGGERS\n", myk()->kthread_idx);
 	poll_trigger_t *t;
 	int ret = 1;
 	int nevents = 0;

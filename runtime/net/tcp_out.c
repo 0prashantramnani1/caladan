@@ -229,6 +229,7 @@ static int tcp_push_options(struct mbuf *m, const struct tcp_options *opts)
  */
 int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 {
+	// printf("KTREAD_ID: %d IN TCP TX CTL\n", myk()->kthread_idx);
 	struct mbuf *m;
 	int ret = 0;
 
@@ -243,8 +244,10 @@ int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 	m->seg_end = c->pcb.snd_nxt + 1;
 	m->flags = flags;
 
-	if (opts)
+	if (opts) { 
+		// printf("KTREAD_ID: %d TCP TX CTL DONE\n", myk()->kthread_idx);
 		ret = tcp_push_options(m, opts);
+	}
 	tcp_push_tcphdr(m, c, flags, 5 + ret, 0);
 	store_release(&c->pcb.snd_nxt, c->pcb.snd_nxt + 1);
 	list_add_tail(&c->txq, &m->link);
@@ -257,6 +260,7 @@ int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 		/* pretend the packet was sent */
 		atomic_write(&m->ref, 1);
 	}
+	// printf("KTREAD_ID: %d TCP TX CTL DONE1\n", myk()->kthread_idx);
 	return ret;
 }
 
@@ -284,6 +288,7 @@ void memcpy_user(char* dst, char* src, int n){
  */
 ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 {
+	// printf("KTREAD_ID: %d IN TCP TX SEND\n", myk()->kthread_idx);
 	struct mbuf *m;
 	const char *pos = buf;
 	const char *end = pos + len;

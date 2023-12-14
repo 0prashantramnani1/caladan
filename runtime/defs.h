@@ -106,6 +106,7 @@ struct thread {
 	FILE 			*fptr;
 	int 			type;
 	bool 			no_memory;
+	bool 			sleeping;
 #ifdef GC
 	struct list_node	gc_link;
 	unsigned int		onk;

@@ -56,6 +56,7 @@ static void send_rst(tcpconn_t *c, bool acked, uint32_t seq, uint32_t ack,
 
 static void tcp_rx_append_text(tcpconn_t *c, struct mbuf *m)
 {
+	// printf("KTREAD_ID: %d IN PTCP RX APPEND TEXT\n", myk()->kthread_idx);
 	uint64_t nxt_wnd;
 	uint32_t len;
 
@@ -172,6 +173,7 @@ drain:
 /* fast path for handling ingress packets for TCP connections */
 void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 {
+	// printf("KTREAD_ID: %d IN TCP RX CONN\n", myk()->kthread_idx);
 	tcpconn_t *c = container_of(e, tcpconn_t, e);
 	struct list_head q;
 	thread_t *rx_th = NULL;

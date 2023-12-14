@@ -57,6 +57,9 @@ static DEFINE_PERTHREAD(struct tcache_perthread, thread_pt);
 /* used to track cycle usage in scheduler */
 static __thread uint64_t last_tsc;
 
+thread_t* app_threads[2];
+int app_thread_cnt = 0;
+
 /**
  * In inc/runtime/thread.h, this function is declared inline (rather than static
  * inline) so that it is accessible to the Rust bindings. As a result, it must
@@ -197,10 +200,17 @@ static void update_oldest_tsc(struct kthread *k)
 	thread_t *th;
 
 	assert_spin_lock_held(&k->lock);
-
+	// printf("KTHREAD_ID: %d In update_oldest_tsc l->rq_head %d l->rq_tail %d\n", k->kthread_idx, k->rq_head, k->rq_tail);
 	/* find the oldest thread in the runqueue */
 	if (load_acquire(&k->rq_head) != k->rq_tail) {
 		th = k->rq[k->rq_tail % RUNTIME_RQ_SIZE];
+		if(k->q_ptrs == NULL) {
+			// printf("KTHREAD_ID: %d Q_PTR IS NULL\n", k->kthread_idx);
+		}
+
+		if(th == NULL) {
+			// printf("KTHREAD_ID: %d th is NULL\n", k->kthread_idx);
+		}
 		ACCESS_ONCE(k->q_ptrs->oldest_tsc) = th->ready_tsc;
 	}
 }
@@ -208,6 +218,7 @@ static void update_oldest_tsc(struct kthread *k)
 /* drain up to nr threads from k's runqueue into list l */
 static uint32_t drain_threads(struct kthread *k, struct list_head *l, uint32_t nr, bool update_tail)
 {
+	// printf("KTREAD_ID: %d IN DRAIN THREADS\n", myk()->kthread_idx);
 	uint32_t i, rq_head, rq_tail;
 	thread_t *th;
 
@@ -235,6 +246,7 @@ static uint32_t drain_threads(struct kthread *k, struct list_head *l, uint32_t n
 
 static void merge_runqueues(struct kthread *l, uint32_t lsize, struct kthread *r, uint32_t rsize)
 {
+	// printf("KTREAD_ID: %d IN MERGE RUNQUEUES\n", myk()->kthread_idx);
 	struct list_head l_ths, r_ths;
 	thread_t *th, *cur_l, *cur_r;
 	uint32_t i;
@@ -403,6 +415,7 @@ static __noreturn __noinline void schedule(void)
 		l->last_softirq_tsc = start_tsc;
 		if (do_watchdog(l)) {
 			// schedule_time += (microtime() - sched_start_time);
+			// printf("KTHREAD_ID: %d going to done1\n", myk()->kthread_idx);
 			goto done;
 		}
 	}
@@ -414,6 +427,7 @@ static __noreturn __noinline void schedule(void)
 	/* first try the local runqueue */
 	if (l->rq_head != l->rq_tail) {
 		// schedule_time += (microtime() - sched_start_time);
+		// printf("KTHREAD_ID: %d going to done2\n", myk()->kthread_idx);
 		goto done;
 	}
 
@@ -426,21 +440,71 @@ again:
 	/* then check for local softirqs */
 	if (softirq_run_locked(l)) {
 		STAT(SOFTIRQS_LOCAL)++;
-		goto done;
+		// printf("KTHREAD_ID: %d going to done3\n", myk()->kthread_idx);
+		if(myk()->kthread_idx < 2) {
+			// printf("KTHREAD_ID: %d going to done3.1\n", myk()->kthread_idx);
+			goto done;
+		}
 	}
 
-	/* then try to steal from a sibling kthread */
-	sibling = cpu_map[l->curr_cpu].sibling_core;
-	r = cpu_map[sibling].recent_kthread;
-	if (r && r != l && steal_work(l, r))
-		goto done;
-
-	/* try to steal from every kthread */
-	start_idx = rand_crc32c((uintptr_t)l);
-	for (i = 0; i < nrks; i++) {
-		int idx = (start_idx + i) % nrks;
-		if (ks[idx] != l && steal_work(l, ks[idx]))
+	if(myk()->kthread_idx < 2) {
+		/* then try to steal from a sibling kthread */
+		sibling = cpu_map[l->curr_cpu].sibling_core;
+		r = cpu_map[sibling].recent_kthread;
+		if (r && r->kthread_idx < 2 && r != l && steal_work(l, r)) {
+			// printf("KTHREAD_ID: %d going to done4\n", myk()->kthread_idx);
 			goto done;
+		}
+
+		/* try to steal from every kthread */
+		start_idx = rand_crc32c((uintptr_t)l);
+		for (i = 0; i < nrks; i++) {
+			int idx = (start_idx + i) % nrks;
+			if (ks[idx] != l && ks[idx]->kthread_idx < 2 && steal_work(l, ks[idx])) {
+				// printf("KTHREAD_ID: %d going to done5\n", myk()->kthread_idx);
+				goto done;
+			}
+		}
+	} else {
+		if(myk()->kthread_idx == 2) {
+			if(app_thread_cnt > 0) {
+				if(app_threads[0] == NULL) {
+					printf("PTHREAD_ID: %d KTHREAD_ID: %d app[0] IS NULL\n", syscall(__NR_gettid), myk()->kthread_idx);
+				}
+				bool sleeping = load_acquire(&app_threads[0]->sleeping);
+				if(!sleeping)
+					thread_ready(app_threads[0]);
+				else {
+					softirq_run_locked(l);
+					goto again;
+				}
+			} else {
+				softirq_run_locked(l);
+				goto again;
+			}
+		} else {
+			if(app_thread_cnt > 1) {
+				// printf("KTHREAD_ID: %d app_thread_cnt: %d\n", myk()->kthread_idx, app_thread_cnt);
+				if(app_threads[1] == NULL) {
+					printf("PTHREAD_ID: %d KTHREAD_ID: %d app[1] IS NULL\n", syscall(__NR_gettid), myk()->kthread_idx);
+				}
+				bool sleeping = load_acquire(&app_threads[1]->sleeping);
+				if(!sleeping) {
+					printf("PTHREAD_ID: %d KTHREAD_ID: %d going into thread ready for app_thread[1]\n", syscall(__NR_gettid), myk()->kthread_idx);
+					thread_ready(app_threads[1]);
+				}
+				else {
+					softirq_run_locked(l);
+					// printf("KTHREAD_ID: %d not going into thread ready for app_thread[1]-sleeping\n", myk()->kthread_idx);
+					goto again;
+				}
+			} else {
+				softirq_run_locked(l);
+				goto again;
+			}
+		}
+		// printf("KTHREAD_ID: %d going to done6\n", myk()->kthread_idx);
+		goto done;
 	}
 
 	/* recheck for local softirqs one last time */
@@ -454,13 +518,16 @@ again:
 		gc_kthread_report(l);
 #endif
 		
-
-	/* keep trying to find work until the polling timeout expires */
-	last_tsc = rdtsc();
-	if (!preempt_cede_needed(l) &&
-	    (++iters < RUNTIME_SCHED_POLL_ITERS ||
-	     last_tsc - start_tsc < cycles_per_us * RUNTIME_SCHED_MIN_POLL_US ||
-	     storage_pending_completions(&l->storage_q))) {
+	if(myk()->kthread_idx < 2) {
+		/* keep trying to find work until the polling timeout expires */
+		last_tsc = rdtsc();
+		if (!preempt_cede_needed(l) &&
+			(++iters < RUNTIME_SCHED_POLL_ITERS ||
+			last_tsc - start_tsc < cycles_per_us * RUNTIME_SCHED_MIN_POLL_US ||
+			storage_pending_completions(&l->storage_q))) {
+			goto again;
+		}
+	} else {
 		goto again;
 	}
 
@@ -507,12 +574,13 @@ again:
 	goto again;
 
 done: ; //Empty statement
+	// printf("KTHREAD_ID: %d In done\n", myk()->kthread_idx);
 	#ifdef SC_LOG
 	uint64_t done_start = microtime();
 		if(sched_again_start != -1)
 			schedule_again_time += (done_start - sched_again_start);
 	#endif
-
+	// printf("KTHREAD_ID: %d In done1 l->rq_head %d l->rq_tail %d\n", myk()->kthread_idx, l->rq_head, l->rq_tail);
 	/* pop off a thread and run it */
 	assert(l->rq_head != l->rq_tail);
 	th = l->rq[l->rq_tail++ % RUNTIME_RQ_SIZE];
@@ -618,9 +686,12 @@ static __always_inline void enter_schedule(thread_t *curth)
 	    (!disable_watchdog &&
 	     unlikely(now_tsc - k->last_softirq_tsc >
 		      cycles_per_us * RUNTIME_WATCHDOG_US))) {
-		jmp_runtime(schedule);
 
-		return;
+		if(k->kthread_idx < 2 || k->rq_head == k->rq_tail) {
+			jmp_runtime(schedule);
+
+			return;
+		}
 	}
 
 	/* fast path: switch directly to the next uthread */
@@ -744,6 +815,7 @@ static void thread_ready_prepare(struct kthread *k, thread_t *th)
  */
 void thread_ready_locked(thread_t *th)
 {
+	// printf("KTREAD_ID: %d IN THREAD READY LOCKED\n", myk()->kthread_idx);
 	struct kthread *k = myk();
 
 	assert_preempt_disabled();
@@ -779,6 +851,16 @@ void thread_ready_locked(thread_t *th)
 void thread_ready_head_locked(thread_t *th)
 {
 	struct kthread *k = myk();
+	bool unlock = false;
+	if(k->kthread_idx == 2) {
+		k = ks[0];
+		spin_lock(&k->lock);
+		unlock = true;
+	} else if(k->kthread_idx == 3) {
+		k = ks[1];
+		spin_lock(&k->lock);
+		unlock = true;
+	}
 	thread_t *oldestth;
 
 	assert_preempt_disabled();
@@ -797,6 +879,10 @@ void thread_ready_head_locked(thread_t *th)
 	}
 	ACCESS_ONCE(k->q_ptrs->oldest_tsc) = th->ready_tsc;
 	ACCESS_ONCE(k->q_ptrs->rq_head)++;
+	
+	if(unlock)
+		spin_unlock(&k->lock);
+	
 }
 
 /**
@@ -807,6 +893,8 @@ void thread_ready_head_locked(thread_t *th)
  */
 void thread_ready(thread_t *th)
 {
+	// if(get_current_affinity() >= 2)
+		// printf("PTHREAD_ID: %d KTREAD_ID: %d IN THREAD READY\n", syscall(__NR_gettid), myk()->kthread_idx);
 	struct kthread *k;
 	uint32_t rq_tail;
 
@@ -1055,6 +1143,7 @@ thread_t *thread_create_type(thread_fn_t fn, void *arg, int type)
 	th->tf.rbp = (uint64_t)0; /* just in case base pointers are enabled */
 	th->tf.rip = (uint64_t)fn;
 	th->type   = type;
+	th->sleeping = false;
 	gc_register_thread(th);
 	return th;
 }
@@ -1122,7 +1211,11 @@ int thread_spawn_type(thread_fn_t fn, void *arg, int type)
 	thread_t *th = thread_create_type(fn, arg, type);
 	if (unlikely(!th))
 		return -ENOMEM;
-	thread_ready(th);
+	if(type != 10)
+		thread_ready(th);
+	else {
+		app_threads[app_thread_cnt++] = th;
+	}	
 	return 0;
 }
 
@@ -1148,7 +1241,7 @@ int thread_spawn_main(thread_fn_t fn, void *arg)
 	if (!th)
 		return -ENOMEM;
 	th->main_thread = true;
-	printf("spawning main thread on pthreadid %d - kthreadid %d\n", syscall(__NR_gettid), myk()->kthread_idx);
+	// printf("spawning main thread on pthreadid %d - kthreadid %d\n", syscall(__NR_gettid), myk()->kthread_idx);
 	thread_ready(th);
 	return 0;
 }
@@ -1186,7 +1279,7 @@ void thread_exit(void)
  */
 static __noreturn void schedule_start(void)
 {
-	printf("IN SCHEDULE START FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
+	// printf("IN SCHEDULE START FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
 	// idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
 	next_log_time = microtime();
 	schedule_time = 0;

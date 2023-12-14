@@ -453,6 +453,7 @@ static void tcp_worker(void *arg)
  */
 void tcp_conn_ack(tcpconn_t *c, struct list_head *freeq)
 {
+	// printf("KTREAD_ID: %d IN TCP CONN ACK\n", myk()->kthread_idx);
 	struct mbuf *m;
 
 	assert_spin_lock_held(&c->lock);
@@ -611,6 +612,7 @@ tcpconn_t *tcp_conn_alloc(void)
  */
 int tcp_conn_attach(tcpconn_t *c, struct netaddr laddr, struct netaddr raddr)
 {
+	// printf("KTREAD_ID: %d IN TCP CONN ATTCH\n", myk()->kthread_idx);
 	int ret;
 	thread_t *th = NULL;
 
@@ -745,6 +747,7 @@ struct tcparg {
 
 static void tcp_queue_recv(struct trans_entry *e, struct mbuf *m)
 {
+	// printf("KTREAD_ID: %d IN TCP QUEUE RECV\n", myk()->kthread_idx);
 	tcpqueue_t *q = container_of(e, tcpqueue_t, e);
 	tcpconn_t *c;
 	thread_t *th;
@@ -918,6 +921,7 @@ int tcp_listen(struct netaddr laddr, int backlog, tcpqueue_t **q_out)
  */
 int tcp_accept(tcpqueue_t *q, tcpconn_t **c_out)
 {
+	// printf("KTREAD_ID: %d IN TCP ACCEPT\n", myk()->kthread_idx);
 	tcpconn_t *c;
 
 	spin_lock_np(&q->l);
@@ -960,7 +964,7 @@ int tcpqueue_get_num_connections_accepted(tcpqueue_t *q) {
  */
 int tcp_accept_poll(tcparg_t *arg)
 {
-	printf("tcp_accept_epoll: \n");
+	// printf("KTREAD_ID: %d IN TCP ACCEPT POLL\n", myk()->kthread_idx);
 	tcpconn_t *c;
 	tcpqueue_t* q = arg->q;
 
@@ -975,7 +979,7 @@ int tcp_accept_poll(tcparg_t *arg)
 		return 0;
 	}
 
-	while (list_empty(&q->conns) && !q->shutdown)
+	while (list_empty(&q->conns) && !q->shutdown) 
 		waitq_wait(&q->wq, &q->l);
 
 	/* was the queue drained and shutdown? */
@@ -1064,6 +1068,7 @@ void tcp_qclose(tcpqueue_t *q)
  */
 int tcp_dial(struct netaddr laddr, struct netaddr raddr, tcpconn_t **c_out)
 {
+	// printf("KTREAD_ID: %d IN TCP DIAL\n", myk()->kthread_idx);
 	struct tcp_options opts;
 	tcpconn_t *c;
 	int ret;
@@ -1207,6 +1212,7 @@ struct netaddr tcp_remote_addr(tcpconn_t *c)
 static ssize_t tcp_read_wait(tcpconn_t *c, size_t len,
 			     struct list_head *q, struct mbuf **mout)
 {
+	// printf("KTREAD_ID: %d IN TCP READ WAIT\n", myk()->kthread_idx);
 	struct mbuf *m;
 	size_t readlen = 0;
 	bool do_ack = false;
@@ -1492,6 +1498,7 @@ ssize_t tcp_readv(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 
 static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 {
+	// printf("KTREAD_ID: %d IN TPC WRITE WAIT\n", myk()->kthread_idx);
 	spin_lock_np(&c->lock);
 	if(!c->tx_closed && (c->pcb.state < TCP_STATE_ESTABLISHED || c->tx_exclusive || tcp_is_snd_full(c))
 	 && c->non_blocking) {
@@ -1541,6 +1548,7 @@ static int tcp_write_wait(tcpconn_t *c, size_t *winlen)
 
 static void tcp_write_finish(tcpconn_t *c)
 {
+	// printf("KTREAD_ID: %d IN TCP WRITE FINISH\n", myk()->kthread_idx);
 	struct list_head q;
 	struct list_head waiters;
 	struct mbuf *retransmit = NULL;
@@ -1648,6 +1656,7 @@ ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 /* resend any pending egress packets that timed out */
 static void tcp_retransmit(void *arg)
 {
+	// printf("KTREAD_ID: %d IN TCP RETRANSMIT\n", myk()->kthread_idx);
 	long long int start = microtime();
 	
 	tcpconn_t *c = (tcpconn_t *)arg;
@@ -1731,6 +1740,7 @@ void tcp_conn_shutdown_rx(tcpconn_t *c)
 
 static int tcp_conn_shutdown_tx(tcpconn_t *c)
 {
+	// printf("KTREAD_ID: %d IN TCP CONN SHUTDOWN\n", myk()->kthread_idx);
 	int ret;
 
 	assert_spin_lock_held(&c->lock);
@@ -1797,6 +1807,7 @@ int tcp_shutdown(tcpconn_t *c, int how)
  */
 void tcp_abort(tcpconn_t *c)
 {
+	// printf("KTREAD_ID: %d IN TCP ABORT\n", myk()->kthread_idx);
 	uint32_t snd_nxt;
 	struct netaddr l, r;
 
