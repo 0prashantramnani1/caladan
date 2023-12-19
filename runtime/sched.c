@@ -440,32 +440,54 @@ again:
 	/* then check for local softirqs */
 	if (softirq_run_locked(l)) {
 		STAT(SOFTIRQS_LOCAL)++;
-		// printf("KTHREAD_ID: %d going to done3\n", myk()->kthread_idx);
-		if(myk()->kthread_idx < 2) {
-			// printf("KTHREAD_ID: %d going to done3.1\n", myk()->kthread_idx);
+		#ifdef PIN
+			if(myk()->kthread_idx < 2) {
+				goto done;
+			}
+		#else
 			goto done;
-		}
+		#endif
 	}
 
-	if(myk()->kthread_idx < 2) {
+	int limit;
+	#ifdef PIN
+		limit = 2;
+	#else
+		limit = INT_MAX;
+	#endif
+	
+
+	if(myk()->kthread_idx < limit) {
 		/* then try to steal from a sibling kthread */
 		sibling = cpu_map[l->curr_cpu].sibling_core;
 		r = cpu_map[sibling].recent_kthread;
-		if (r && r->kthread_idx < 2 && r != l && steal_work(l, r)) {
-			// printf("KTHREAD_ID: %d going to done4\n", myk()->kthread_idx);
-			goto done;
-		}
+		#ifdef PIN
+			if (r && r->kthread_idx < 2 && r != l && steal_work(l, r)) {
+				goto done;
+			}
+		#else
+			if (r && r != l && steal_work(l, r)) {
+				goto done;
+			}
+		#endif
 
 		/* try to steal from every kthread */
 		start_idx = rand_crc32c((uintptr_t)l);
 		for (i = 0; i < nrks; i++) {
 			int idx = (start_idx + i) % nrks;
-			if (ks[idx] != l && ks[idx]->kthread_idx < 2 && steal_work(l, ks[idx])) {
-				// printf("KTHREAD_ID: %d going to done5\n", myk()->kthread_idx);
-				goto done;
-			}
-		}
-	} else {
+			#ifdef PIN
+				if (ks[idx] != l && ks[idx]->kthread_idx < 2 && steal_work(l, ks[idx])) {
+					goto done;
+				}
+			#else
+				if (ks[idx] != l && steal_work(l, ks[idx])) {
+					goto done;
+				}
+			#endif
+		}	
+	} 
+	else {
+		printf("ELSEEEE IN SCHED\n");
 		if(myk()->kthread_idx == 2) {
 			if(app_thread_cnt > 0) {
 				if(app_threads[0] == NULL) {
@@ -518,7 +540,7 @@ again:
 		gc_kthread_report(l);
 #endif
 		
-	if(myk()->kthread_idx < 2) {
+	if(myk()->kthread_idx < limit) {
 		/* keep trying to find work until the polling timeout expires */
 		last_tsc = rdtsc();
 		if (!preempt_cede_needed(l) &&
@@ -686,12 +708,16 @@ static __always_inline void enter_schedule(thread_t *curth)
 	    (!disable_watchdog &&
 	     unlikely(now_tsc - k->last_softirq_tsc >
 		      cycles_per_us * RUNTIME_WATCHDOG_US))) {
-
-		if(k->kthread_idx < 2 || k->rq_head == k->rq_tail) {
+		
+		#ifdef PIN
+			if(k->kthread_idx < 2 || k->rq_head == k->rq_tail) {
+				jmp_runtime(schedule);
+			}
+		#else
 			jmp_runtime(schedule);
+		#endif
 
 			return;
-		}
 	}
 
 	/* fast path: switch directly to the next uthread */
@@ -852,15 +878,18 @@ void thread_ready_head_locked(thread_t *th)
 {
 	struct kthread *k = myk();
 	bool unlock = false;
-	if(k->kthread_idx == 2) {
-		k = ks[0];
-		spin_lock(&k->lock);
-		unlock = true;
-	} else if(k->kthread_idx == 3) {
-		k = ks[1];
-		spin_lock(&k->lock);
-		unlock = true;
-	}
+
+	#ifdef PIN
+		if(k->kthread_idx == 2) {
+			k = ks[0];
+			spin_lock(&k->lock);
+			unlock = true;
+		} else if(k->kthread_idx == 3) {
+			k = ks[1];
+			spin_lock(&k->lock);
+			unlock = true;
+		}
+	#endif
 	thread_t *oldestth;
 
 	assert_preempt_disabled();

@@ -32,10 +32,14 @@ void __mutex_lock(mutex_t *m)
 
 	myth = thread_self();
 	list_add_tail(&m->waiters, &myth->link);
-	int type = load_acquire(&myth->type);
-	if(type = 10) {
-		store_release(&myth->sleeping, true);
-	}
+
+	#ifdef PIN
+		int type = load_acquire(&myth->type);
+		if(type = 10) {
+			store_release(&myth->sleeping, true);
+		}
+	#endif
+
 	thread_park_and_unlock_np(&m->waiter_lock);
 }
 
@@ -54,11 +58,13 @@ void __mutex_unlock(mutex_t *m)
 	}
 	spin_unlock_np(&m->waiter_lock);
 
-	int type = load_acquire(&waketh->type);
-	if(type == 10) {
-		store_release(&waketh->sleeping, false);
-		return;
-	}
+	#ifdef PIN
+		int type = load_acquire(&waketh->type);
+		if(type == 10) {
+			store_release(&waketh->sleeping, false);
+			return;
+		}
+	#endif
 	thread_ready(waketh);
 }
 
@@ -302,11 +308,12 @@ void condvar_wait(condvar_t *cv, mutex_t *m)
 	mutex_unlock(m);
 	list_add_tail(&cv->waiters, &myth->link);
 
-	int type = load_acquire(&thread_self()->type);
-	if(type = 10) {
-		printf("PTHREAD_ID: %d KTHREAD_ID: %d THREAD SLEEPING IS TRUE\n", syscall(__NR_gettid), myk()->kthread_idx);
-		store_release(&thread_self()->sleeping, true);
-	}
+	#ifdef PIN
+		int type = load_acquire(&thread_self()->type);
+		if(type = 10) {
+			store_release(&thread_self()->sleeping, true);
+		}
+	#endif
 	thread_park_and_unlock_np(&cv->waiter_lock);
 
 	mutex_lock(m);
@@ -346,12 +353,13 @@ void condvar_broadcast(condvar_t *cv)
 		waketh = list_pop(&tmp, thread_t, link);
 		if (!waketh)
 			break;
-		int type = load_acquire(&waketh->type);
-		if(type == 10) {
-			printf("PTHREAD_ID %d KTHREAD_ID %d condvar_brodcast to data thread\n", syscall(__NR_gettid), myk()->kthread_idx);
-			store_release(&waketh->sleeping, false);
-			continue;
-		}
+		#ifdef PIN
+			int type = load_acquire(&waketh->type);
+			if(type == 10) {
+				store_release(&waketh->sleeping, false);
+				continue;
+			}
+		#endif
 		thread_ready(waketh);
 	}
 }
@@ -475,12 +483,13 @@ bool barrier_wait(barrier_t *b)
 			th = list_pop(&tmp, thread_t, link);
 			if (!th)
 				break;
-
-			int type = load_acquire(&th->type);
-			if(type == 10) {
-				store_release(&th->sleeping, false);
-				continue;
-			} 
+			#ifdef PIN
+				int type = load_acquire(&th->type);
+				if(type == 10) {
+					store_release(&th->sleeping, false);
+					continue;
+				} 
+			#endif
 			thread_ready(th);
 		}
 		return true;
@@ -489,10 +498,12 @@ bool barrier_wait(barrier_t *b)
 	th = thread_self();
 	list_add_tail(&b->waiters, &th->link);
 
-	int type = load_acquire(&th->type);
-	if(type = 10) {
-		store_release(&th->sleeping, true);
-	}
+	#ifdef PIN
+		int type = load_acquire(&th->type);
+		if(type = 10) {
+			store_release(&th->sleeping, true);
+		}
+	#endif
 
 	thread_park_and_unlock_np(&b->lock);
 	return false;

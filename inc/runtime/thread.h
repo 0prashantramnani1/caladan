@@ -13,7 +13,10 @@ struct thread;
 typedef void (*thread_fn_t)(void *arg);
 typedef struct thread thread_t;
 
+extern thread_t* app_threads[2];
+extern int app_thread_cnt;
 
+// #define PIN 0
 /*
  * Low-level routines, these are helpful for bindings and synchronization
  * primitives.

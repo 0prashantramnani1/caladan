@@ -23,10 +23,12 @@ static inline void waitq_wait(waitq_t *q, spinlock_t *l)
 	// printf("KTREAD_ID: %d IN WAIT Q WAIT\n", myk()->kthread_idx);
 	assert_spin_lock_held(l);
 	list_add_tail(&q->waiters, &thread_self()->link);
-	int type = load_acquire(&thread_self()->type);
-	if(type = 10) {
-		store_release(&thread_self()->sleeping, true);
-	}
+	#ifdef PIN
+		int type = load_acquire(&thread_self()->type);
+		if(type = 10) {
+			store_release(&thread_self()->sleeping, true);
+		}
+	#endif
 	thread_park_and_unlock_np(l);
 	spin_lock_np(l);
 }
@@ -80,11 +82,13 @@ static inline void waitq_release(waitq_t *q)
 		thread_t *th = list_pop(&q->waiters, thread_t, link);
 		if (!th)
 			break;
-		int type = load_acquire(&th->type);
-		if(type == 10) {
-			store_release(&th->sleeping, false);
-			continue;
-		}
+		#ifdef PIN
+			int type = load_acquire(&th->type);
+			if(type == 10) {
+				store_release(&th->sleeping, false);
+				continue;
+			}
+		#endif
 		thread_ready(th);
 	}
 }
