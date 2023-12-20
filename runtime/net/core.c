@@ -270,17 +270,19 @@ static void iokernel_softirq_poll(struct kthread *k)
 		}
 	}
 
-	// if(syscall(__NR_gettid) == pthreads[0]) {
-	// 	fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
-	// 	fflush(softirq_1);
-	// }
-	// else {
-	// 	fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
-	// 	fflush(softirq_2);
-	// }
+	#ifdef SC_LOG
+		if(syscall(__NR_gettid) == pthreads[0]) {
+			fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+			fflush(softirq_1);
+		}
+		else {
+			fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+			fflush(softirq_2);
+		}
+	#endif
 
 	// #ifdef SC_LOG
-	// fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
+		// fprintf(retransmit_logs,"%ld - %llu - %llu\n", syscall(__NR_gettid), start, microtime());
 	// #endif
 }
 
@@ -288,8 +290,11 @@ static void iokernel_softirq(void *arg)
 {
 	struct kthread *k = arg;
 
-	// softirq_1 = fopen("dumbshit/irq2.txt", "w");
-	// softirq_2 = fopen("dumbshit/irq1.txt", "w");
+
+	#ifdef SC_LOG
+		softirq_1 = fopen("sc_log/irq2.txt", "w");
+		softirq_2 = fopen("sc_log/irq1.txt", "w");
+	#endif
 
 	while (true) {
 		iokernel_softirq_poll(k);

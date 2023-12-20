@@ -637,12 +637,12 @@ done: ; //Empty statement
 	STAT_INC(STAT_JMP, 1);
 
 	#ifdef SC_LOG
-		// uint64_t end  = microtime();
+		uint64_t end  = microtime();
 		// if(end > 104 * ONE_SECOND) {
-			// fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
-			// fflush(idle_schedule);
+			fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
+			fflush(idle_schedule);
 		// }
-		// logging_time += (microtime() - end);
+		logging_time += (microtime() - end);
 		th->start = microtime();
 		schedule_done_time += (th->start - done_start);
 		schedule_time += (th->start - sched_start_time);
@@ -672,17 +672,18 @@ static __always_inline void enter_schedule(thread_t *curth)
 		}
 	#endif
 
-	// sched_start_time = microtime();
 	
 	#ifdef SC_LOG
+		sched_start_time = microtime();
+
 		if(curth->type == -1) {
 			curth->total_execution_time += (sched_start_time - curth->start);
-			if(sched_start_time > 405 * ONE_SECOND) {
-				// fprintf(curth->fptr,"%ld - %llu - %llu\n", syscall(__NR_gettid), curth->start, sched_start_time);
-				fprintf(curth->fptr,"%llu\n", curth->total_execution_time);
-				fflush(curth->fptr);
-			}
-			// logging_time += (microtime() - sched_start_time);
+			// if(sched_start_time > 405 * ONE_SECOND) {
+				fprintf(curth->fptr,"%ld - %llu - %llu\n", syscall(__NR_gettid), curth->start, sched_start_time);
+				// fprintf(curth->fptr,"%llu\n", curth->total_execution_time);
+				// fflush(curth->fptr);
+			// }
+			logging_time += (microtime() - sched_start_time);
 		}
 		if(sched_start_time > 405 * ONE_SECOND)
 			printf("SCHEDULE TIME: %llu - Schedule Again time %llu - SChedule Done time %llu - Park_time %llu\n", schedule_time, schedule_again_time, schedule_done_time, kthread_park_time);
@@ -754,11 +755,11 @@ static __always_inline void enter_schedule(thread_t *curth)
 
 		#ifdef SC_LOG
 			uint64_t end  = microtime();
-			if(end >= 6 * ONE_SECOND) {
+			// if(end >= 6 * ONE_SECOND) {
 				fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
 				fflush(idle_schedule);
 				logging_time += (microtime() - end);
-			}
+			// }
 			th->start = microtime();
 			schedule_time += (th->start - sched_start_time);
 		#endif
@@ -778,11 +779,11 @@ static __always_inline void enter_schedule(thread_t *curth)
 
 	#ifdef SC_LOG
 		uint64_t end  = microtime();
-		if(end >= 6 * ONE_SECOND) {
+		// if(end >= 6 * ONE_SECOND) {
 			fprintf(idle_schedule,"%ld - %llu - %llu\n", syscall(__NR_gettid), sched_start_time, end);
 			fflush(idle_schedule);
 			logging_time += (microtime() - end);
-		}
+		// }
 		th->start = microtime();
 		schedule_time += (th->start - sched_start_time);
 	#endif
@@ -1090,7 +1091,7 @@ static __always_inline thread_t *__thread_create(void)
 
 	#ifdef SC_LOG
 		char buffer [1000];
-		snprintf ( buffer, 1000, "dumbshit/uthread_%d", num_uthreads++);
+		snprintf ( buffer, 1000, "sc_log/uthread_%d", num_uthreads++);
 		// printf("SPAWNING UTHREAD - %d with name - %s\n", num_uthreads, buffer);
 		th->fptr = fopen(buffer, "w");
 		if(th->fptr == NULL) {
@@ -1309,7 +1310,9 @@ void thread_exit(void)
 static __noreturn void schedule_start(void)
 {
 	// printf("IN SCHEDULE START FOR KTHREAD ID: %ld\n", syscall(__NR_gettid));
-	// idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
+	#ifdef SC_LOG
+		idle_schedule = fopen("sc_log/idle_schedule.txt", "w");
+	#endif
 	next_log_time = microtime();
 	schedule_time = 0;
 	schedule_again_time = 0;

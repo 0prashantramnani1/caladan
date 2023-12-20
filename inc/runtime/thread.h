@@ -8,6 +8,7 @@
 #include <base/compiler.h>
 #include <runtime/preempt.h>
 #include <iokernel/control.h>
+#include <stdio.h>
 
 struct thread;
 typedef void (*thread_fn_t)(void *arg);
@@ -15,8 +16,10 @@ typedef struct thread thread_t;
 
 extern thread_t* app_threads[2];
 extern int app_thread_cnt;
+extern FILE* data_thread;
 
 // #define PIN 0
+#define timescale 1
 /*
  * Low-level routines, these are helpful for bindings and synchronization
  * primitives.
