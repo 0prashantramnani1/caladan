@@ -201,7 +201,7 @@ static void stat_tcp_worker(void *arg)
 
 		done = 0;
 		do {
-			ret = tcp_write(c, (char *)&resp + done, sizeof(size_t) + len - done);
+			ret = tcp_write(c, (char *)&resp + done, sizeof(size_t) + len - done, NULL, NULL, NULL);
 			if (ret < 0) {
 				WARN_ON(ret != -EPIPE && ret != -ECONNRESET);
 				goto done;

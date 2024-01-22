@@ -56,6 +56,7 @@ static inline bool lrpc_send(struct lrpc_chan_out *chan, uint64_t cmd,
 
 	if (unlikely(chan->send_head - chan->send_tail >= chan->size)) {
 		// printf("GREATER than chan size\n");
+		printf("chan->size: %d --- (chan->send_head - chan->send_tail): %d\n", chan->size, chan->send_head - chan->send_tail);
 		return __lrpc_send(chan, cmd, payload);
 	}
 	

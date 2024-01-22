@@ -6,6 +6,7 @@
 #include <runtime/smalloc.h>
 #include "defs.h"
 #include "net/mbufq.h"
+#include "defs.h"
 
 /**
  * poll_init - initializes a polling waiter object

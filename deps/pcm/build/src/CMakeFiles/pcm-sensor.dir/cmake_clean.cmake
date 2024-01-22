@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/pcm-sensor.dir/pcm-sensor.cpp.o"
-  "../bin/pcm-sensor.pdb"
   "../bin/pcm-sensor"
+  "../bin/pcm-sensor.pdb"
+  "CMakeFiles/pcm-sensor.dir/pcm-sensor.cpp.o"
+  "CMakeFiles/pcm-sensor.dir/pcm-sensor.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

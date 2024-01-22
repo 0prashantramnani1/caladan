@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/pcm-latency.dir/pcm-latency.cpp.o"
-  "../bin/pcm-latency.pdb"
   "../bin/pcm-latency"
+  "../bin/pcm-latency.pdb"
+  "CMakeFiles/pcm-latency.dir/pcm-latency.cpp.o"
+  "CMakeFiles/pcm-latency.dir/pcm-latency.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

@@ -12,6 +12,7 @@
 #define ONE_US		1
 
 extern int cycles_per_us;
+extern int cycles_per_ns;
 extern uint64_t start_tsc; 
 
 /**
@@ -21,6 +22,11 @@ extern uint64_t start_tsc;
 static inline uint64_t microtime(void)
 {
 	return (rdtsc() - start_tsc) / cycles_per_us;
+}
+
+static inline uint64_t nanotime(void)
+{
+	return (rdtsc() - start_tsc) / cycles_per_ns;
 }
 
 extern void __time_delay_us(uint64_t us);

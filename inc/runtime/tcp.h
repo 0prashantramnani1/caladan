@@ -48,7 +48,7 @@ extern struct netaddr tcp_local_addr(tcpconn_t *c);
 extern struct netaddr tcp_remote_addr(tcpconn_t *c);
 extern ssize_t tcp_read(tcpconn_t *c, void *buf, size_t len);
 extern ssize_t tcp_read_poll(tcp_read_arg_t *arg);
-extern ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len);
+extern ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len, long int *a, long int *b, long int *d);
 extern ssize_t tcp_readv(tcpconn_t *c, const struct iovec *iov, int iovcnt);
 extern ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt);
 extern int tcp_shutdown(tcpconn_t *c, int how);

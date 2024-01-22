@@ -264,12 +264,6 @@ int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 	return ret;
 }
 
-void memcpy_user(char* dst, char* src, int n){
-	for(int i=0;i<n;i++) {
-		dst[i] = src[i];
-	}
-}
-
 /**
  * tcp_tx_send - transmit a buffer on a TCP connection
  * @c: the TCP connection
@@ -286,7 +280,14 @@ void memcpy_user(char* dst, char* src, int n){
  *
  * Returns the number of bytes transmitted, or < 0 if there was an error.
  */
-ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
+
+void memcpy_user(char* dst, char* src, int n){
+	for(int i=0;i<n;i++) {
+		dst[i] = src[i];
+	}
+}
+
+ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool count)
 {
 	// printf("KTREAD_ID: %d IN TCP TX SEND\n", myk()->kthread_idx);
 	struct mbuf *m;
@@ -301,6 +302,8 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 
 	pos = buf;
 	end = pos + len;
+
+    uint64_t start_time, end_time;
 
 	/* the main TCP segmenter loop */
 	do {
@@ -341,9 +344,10 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 			atomic_write(&m->ref, 2);
 			m->release = tcp_tx_release_mbuf;
 		}
-
-		// memcpy(mbuf_put(m, seglen), pos, seglen);
+		//__asm__ __volatile__("xchg %%rdx, %%rdx;"::);
+		//memcpy(mbuf_put(m, seglen), pos, seglen);
 		memcpy_user(mbuf_put(m, seglen), pos, seglen);
+		//__asm__ __volatile__("xchg %%rdx, %%rdx;"::);
 
 		store_release(&c->pcb.snd_nxt, c->pcb.snd_nxt + seglen);
 		pos += seglen;
@@ -365,7 +369,23 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 		tcp_debug_egress_pkt(c, m);
 		m->timestamp = microtime();
 		m->txflags = OLFLAG_TCP_CHKSUM;
+
+		#ifdef timescale
+		if(count)
+			start_time = nanotime();
+		#endif
+
 		ret = net_tx_ip(m, IPPROTO_TCP, c->e.raddr.ip);
+
+		#ifdef timescale
+		if (count) {
+			end_time = nanotime();
+			c->start_times[c->size] = start_time;
+			c->end_times[c->size] = end_time;
+			c->size++;
+		}
+		#endif
+
 		if (unlikely(ret)) {
 			/* pretend the packet was sent */
 			atomic_write(&m->ref, 1);

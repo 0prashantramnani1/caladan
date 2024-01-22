@@ -1,8 +1,10 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/daemon.dir/daemon/daemon.cpp.o"
-  "CMakeFiles/daemon.dir/daemon/main.cpp.o"
-  "../bin/pcm-daemon.pdb"
   "../bin/pcm-daemon"
+  "../bin/pcm-daemon.pdb"
+  "CMakeFiles/daemon.dir/daemon/daemon.cpp.o"
+  "CMakeFiles/daemon.dir/daemon/daemon.cpp.o.d"
+  "CMakeFiles/daemon.dir/daemon/main.cpp.o"
+  "CMakeFiles/daemon.dir/daemon/main.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

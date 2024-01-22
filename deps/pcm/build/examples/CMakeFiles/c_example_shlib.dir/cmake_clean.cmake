@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/c_example_shlib.dir/c_example.c.o"
-  "../bin/examples/c_example_shlib.pdb"
   "../bin/examples/c_example_shlib"
+  "../bin/examples/c_example_shlib.pdb"
+  "CMakeFiles/c_example_shlib.dir/c_example.c.o"
+  "CMakeFiles/c_example_shlib.dir/c_example.c.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

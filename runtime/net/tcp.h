@@ -29,6 +29,7 @@
 #define TCP_OOO_MAX_SIZE	2048
 #define TCP_RETRANSMIT_BATCH	16
 
+//long long int tcp_retransmits = 0;
 
 /**
  * tcp_calculate_mss - given an ethernet MTU, returns the TCP MSS
@@ -82,6 +83,7 @@ struct tcp_pcb {
 	uint32_t	rcv_mss;	/* the send max segment size */
 };
 
+
 /* the TCP connection struct */
 struct tcpconn {
 	uint32_t 			id;
@@ -134,6 +136,9 @@ struct tcpconn {
 	bool			ack_delayed;
 	int			rep_acks;
 	int			acks_delayed_cnt;
+
+	long int start_times[200], end_times[200];
+    long int size;
 };
 
 extern tcpconn_t *tcp_conn_alloc(void);
@@ -201,7 +206,7 @@ extern int tcp_tx_probe_window(tcpconn_t *c);
 extern int tcp_tx_ctl(tcpconn_t *c, uint8_t flags,
 		      const struct tcp_options *opts);
 extern ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len,
-			   bool push);
+			   bool push, bool count);
 extern void tcp_tx_retransmit(tcpconn_t *c);
 extern struct mbuf *tcp_tx_fast_retransmit_start(tcpconn_t *c);
 extern void tcp_tx_fast_retransmit_finish(tcpconn_t *c, struct mbuf *m);

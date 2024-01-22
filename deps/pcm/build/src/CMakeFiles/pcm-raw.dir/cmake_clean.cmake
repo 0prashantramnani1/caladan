@@ -1,8 +1,10 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/pcm-raw.dir/pcm-raw.cpp.o"
-  "CMakeFiles/pcm-raw.dir/simdjson_wrapper.cpp.o"
-  "../bin/pcm-raw.pdb"
   "../bin/pcm-raw"
+  "../bin/pcm-raw.pdb"
+  "CMakeFiles/pcm-raw.dir/pcm-raw.cpp.o"
+  "CMakeFiles/pcm-raw.dir/pcm-raw.cpp.o.d"
+  "CMakeFiles/pcm-raw.dir/simdjson_wrapper.cpp.o"
+  "CMakeFiles/pcm-raw.dir/simdjson_wrapper.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

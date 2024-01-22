@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/PCM_SHARED.dir/pcm-core.cpp.o"
   "../lib/libpcm.pdb"
   "../lib/libpcm.so"
+  "CMakeFiles/PCM_SHARED.dir/pcm-core.cpp.o"
+  "CMakeFiles/PCM_SHARED.dir/pcm-core.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

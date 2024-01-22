@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/pcm-core.dir/pcm-core.cpp.o"
-  "../bin/pcm-core.pdb"
   "../bin/pcm-core"
+  "../bin/pcm-core.pdb"
+  "CMakeFiles/pcm-core.dir/pcm-core.cpp.o"
+  "CMakeFiles/pcm-core.dir/pcm-core.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.
