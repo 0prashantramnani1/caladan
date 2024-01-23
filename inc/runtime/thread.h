@@ -28,7 +28,7 @@ extern thread_t *thread_create_type(thread_fn_t fn, void *arg, int type);
 extern thread_t *thread_create_with_buf(thread_fn_t fn, void **buf, size_t len);
 
 extern __thread thread_t *__self;
-extern __thread thread_t *__u_main;
+extern thread_t *__u_main;
 extern volatile thread_t *__secondary_data_thread;
 extern int pthreads[2];
 extern __thread unsigned int kthread_idx;

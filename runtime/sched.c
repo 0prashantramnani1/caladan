@@ -36,7 +36,7 @@ uint64_t logging_time;
 
 /* the current running thread, or NULL if there isn't one */
 __thread thread_t *__self;
-__thread thread_t *__u_main;
+thread_t *__u_main;
 
 /* a pointer to the top of the per-kthread (TLS) runtime stack */
 static __thread void *runtime_stack;
