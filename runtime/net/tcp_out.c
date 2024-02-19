@@ -53,6 +53,7 @@ tcp_push_tcphdr(struct mbuf *m, tcpconn_t *c, uint8_t flags,
 	tcphdr->seq = hton32(m->seg_seq);
 	tcphdr->sum = tcp_hdr_chksum(c->e.laddr.ip, c->e.raddr.ip,
 				     off * sizeof(uint32_t) + l4len);
+
 	return tcphdr;
 }
 
@@ -153,7 +154,6 @@ int tcp_tx_ack(tcpconn_t *c)
 	m->seg_seq = load_acquire(&c->pcb.snd_nxt);
 	tcp_push_tcphdr(m, c, TCP_ACK, 5, 0);
 
-	// printf("Sending ACK for mbuf size: %d\n", sizeof(m));
 	/* transmit packet */
 	tcp_debug_egress_pkt(c, m);
 	ret = net_tx_ip(m, IPPROTO_TCP, c->e.raddr.ip);
@@ -229,7 +229,6 @@ static int tcp_push_options(struct mbuf *m, const struct tcp_options *opts)
  */
 int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 {
-	// printf("KTREAD_ID: %d IN TCP TX CTL\n", myk()->kthread_idx);
 	struct mbuf *m;
 	int ret = 0;
 
@@ -245,7 +244,6 @@ int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 	m->flags = flags;
 
 	if (opts) { 
-		// printf("KTREAD_ID: %d TCP TX CTL DONE\n", myk()->kthread_idx);
 		ret = tcp_push_options(m, opts);
 	}
 	tcp_push_tcphdr(m, c, flags, 5 + ret, 0);
@@ -260,7 +258,6 @@ int tcp_tx_ctl(tcpconn_t *c, uint8_t flags, const struct tcp_options *opts)
 		/* pretend the packet was sent */
 		atomic_write(&m->ref, 1);
 	}
-	// printf("KTREAD_ID: %d TCP TX CTL DONE1\n", myk()->kthread_idx);
 	return ret;
 }
 
@@ -288,14 +285,17 @@ void memcpy_user(char* dst, char* src, int n){
  */
 ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 {
-	// printf("KTREAD_ID: %d IN TCP TX SEND\n", myk()->kthread_idx);
-	struct mbuf *m;
+	struct mbuf *m, *m_new;
+	m = net_tx_alloc_mbuf();
+    if (unlikely(!m))
+        return -ENOBUFS;
+    prefetch(m);
+
 	const char *pos = buf;
 	const char *end = pos + len;
 	ssize_t ret = 0;
 	size_t seglen;
 	uint32_t mss = c->pcb.snd_mss;
-
 	assert(c->pcb.state >= TCP_STATE_ESTABLISHED);
 	assert((c->tx_exclusive == true) || spin_lock_held(&c->lock));
 
@@ -312,28 +312,14 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 			m->seg_end += seglen;
 		} else {
 			ALLOC:
-				m = net_tx_alloc_mbuf();
-				// printf("Address of TX MBUF: %p\n", m);
-				if (unlikely(!m)) {
+				//m = net_tx_alloc_mbuf();
+				m_new = net_tx_alloc_mbuf();
+				if (unlikely(!m_new)) {
 					ret = -ENOBUFS;
-					// printf("UNLIKELY\n");
-					// if(c == NULL || c->conn_thread == NULL)
-					// 	printf("CONN IS NULL\n");
-					// store_release(&c->conn_thread->no_memory, true);
-					// printf("GOING INTO PREEMT DISABLE\n");
-					// preempt_disable();
-					// printf("PREEMT DISABLE done\n");
-					// if(spin_lock_held(&c->lock)) {
-					// 	printf("SPOIN LOCK HELD\n");
-					// 	thread_park_and_unlock_np(&c->lock);
-					// }
-					// else
-					// 	thread_park_and_preempt_enable();
-					// // preempt_enable();
-					// printf("RETURNING FROM PARK\n");
-					// goto ALLOC;
 					break;
 			}
+            prefetch(m_new);
+
 			seglen = MIN(end - pos, mss);
 			m->seg_seq = c->pcb.snd_nxt;
 			m->seg_end = c->pcb.snd_nxt + seglen;
@@ -370,6 +356,7 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push)
 			/* pretend the packet was sent */
 			atomic_write(&m->ref, 1);
 		}
+        m = m_new;
 	} while (pos < end);
 
 	/* if we sent anything return the length we sent instead of an error */
@@ -397,7 +384,6 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 	 * in such corner cases.
 	 */
 	if (unlikely(atomic_read(&m->ref) != 1)) {
-//		printf("Retransmitting packet lost on queue\n");
 		struct mbuf *newm = net_tx_alloc_mbuf();
 		if (unlikely(!newm))
 			return -ENOMEM;
@@ -410,7 +396,6 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 		newm->txflags = OLFLAG_TCP_CHKSUM;
 		m = newm;
 	} else {
-//		printf("Retransmitting packet stuck in lRPC queue\n");
 		/* strip headers and reset ref count */
 		mbuf_reset(m, m->transport_off + sizeof(struct tcp_hdr));
 		atomic_write(&m->ref, 2);
