@@ -54,6 +54,20 @@ extern int mem_unmap_shm(void *base);
 extern int mem_lookup_page_phys_addrs(void *addr, size_t len, size_t pgsize,
 				      physaddr_t *maddrs);
 
+
+static inline void prefetch_len(uint64_t addr, size_t size){
+    uint64_t lsize=0;
+    if(size % 64)
+        lsize = 1;
+    lsize += size/64;
+    
+    while(lsize){
+        prefetch(addr);
+        lsize--;
+        addr += 64;
+    }
+}
+
 static inline int
 mem_lookup_page_phys_addr(void *addr, size_t pgsize, physaddr_t *paddr)
 {

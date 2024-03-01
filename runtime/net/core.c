@@ -271,14 +271,14 @@ static void iokernel_softirq_poll(struct kthread *k)
 	}
 
 	#ifdef SC_LOG
-		if(syscall(__NR_gettid) == pthreads[0]) {
-			fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
-			fflush(softirq_1);
-		}
-		else {
-			fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
-			fflush(softirq_2);
-		}
+		// if(syscall(__NR_gettid) == pthreads[0]) {
+		// 	fprintf(softirq_1,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+		// 	fflush(softirq_1);
+		// }
+		// else {
+		// 	fprintf(softirq_2,"%ld - %llu - %llu - %llu\n", syscall(__NR_gettid), start, microtime(), packets_processed);
+		// 	fflush(softirq_2);
+		// }
 	#endif
 
 	// #ifdef SC_LOG
@@ -292,8 +292,8 @@ static void iokernel_softirq(void *arg)
 
 
 	#ifdef SC_LOG
-		softirq_1 = fopen("sc_log/irq2.txt", "w");
-		softirq_2 = fopen("sc_log/irq1.txt", "w");
+		// softirq_1 = fopen("sc_log/irq2.txt", "w");
+		// softirq_2 = fopen("sc_log/irq1.txt", "w");
 	#endif
 
 	while (true) {
@@ -391,7 +391,6 @@ static int net_tx_iokernel(struct mbuf *m)
 	shmptr_t shm = ptr_to_shmptr(&netcfg.tx_region, hdr, len + sizeof(*hdr));
 
 	if (unlikely(!lrpc_send(&k->txpktq, TXPKT_NET_XMIT, shm))) {
-		printf("LRPC SEND -1\n");
 		mbuf_pull_hdr(m, *hdr);
 		return -1;
 	}
@@ -440,6 +439,9 @@ void net_tx_eth(struct mbuf *m, uint16_t type, struct eth_addr dhost)
 	eth_hdr->shost = netcfg.mac;
 	eth_hdr->dhost = dhost;
 	eth_hdr->type = hton16(type);
+
+	// printf("SIZE OF ETH HEADER: %d\n", sizeof(*eth_hdr));
+
 	net_tx_raw(m);
 }
 
@@ -460,6 +462,9 @@ static void net_push_iphdr(struct mbuf *m, uint8_t proto, uint32_t daddr)
 	iphdr->chksum = 0;
 	iphdr->saddr = hton32(netcfg.addr);
 	iphdr->daddr = hton32(daddr);
+
+	//printf("SIZE OF IP HEADER: %d\n", sizeof(*iphdr));
+
 }
 
 static uint32_t net_get_ip_route(uint32_t daddr)
