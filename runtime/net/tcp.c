@@ -1404,7 +1404,7 @@ ssize_t tcp_read_poll(tcp_read_arg_t *arg)
 	tcp_read_finish(c, m);
 	c->reqs++;
 	if(ret > 0) {
-		int tmp = tcp_write(c, buf, ret);
+		int tmp = tcp_write(c, buf, ret, NULL, NULL, NULL);
 	}
 	return ret;
 }
@@ -1596,7 +1596,7 @@ static void tcp_write_finish(tcpconn_t *c)
  * Returns the number of bytes written (could be less than @len), or < 0
  * if there was a failure.
  */
-ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len)
+ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len, long int *a, long int *b,long int *d)
 {
 	size_t winlen;
 	ssize_t ret;
@@ -1607,13 +1607,23 @@ ssize_t tcp_write(tcpconn_t *c, const void *buf, size_t len)
 		return ret;
 
 	/* actually send the data */
-	ret = tcp_tx_send(c, buf, MIN(len, winlen), true);
+	ret = tcp_tx_send(c, buf, MIN(len, winlen), true, (a!=NULL));
 
 	/* catch up on any pending work */
 	tcp_write_finish(c);
 
 	if(ret > 0)
 		c->reqs += ret;
+
+	if(	a!= NULL) {
+		for (int k=0; k<c->size; k++) {
+				a[*d] = c->start_times[k];
+				b[*d] = c->end_times[k];
+				(*d)++;
+		}
+		c->size = 0;
+	}
+	
 	return ret;
 }
 
@@ -1642,7 +1652,7 @@ ssize_t tcp_writev(tcpconn_t *c, const struct iovec *iov, int iovcnt)
 		if (winlen <= 0)
 			break;
 		ret = tcp_tx_send(c, iov->iov_base, MIN(iov->iov_len, winlen),
-				  i == iovcnt - 1 && iov->iov_len <= winlen);
+				  i == iovcnt - 1 && iov->iov_len <= winlen, false);
 		if (ret <= 0)
 			break;
 		winlen -= ret;

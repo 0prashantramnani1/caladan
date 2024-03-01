@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/daemon_alignment_test.dir/daemon_alignment_test.cpp.o"
-  "../bin/tests/daemon_alignment_test.pdb"
   "../bin/tests/daemon_alignment_test"
+  "../bin/tests/daemon_alignment_test.pdb"
+  "CMakeFiles/daemon_alignment_test.dir/daemon_alignment_test.cpp.o"
+  "CMakeFiles/daemon_alignment_test.dir/daemon_alignment_test.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.

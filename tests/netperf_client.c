@@ -96,7 +96,7 @@ static void do_client_poll(int id)
                 //register trigger with a waiter
                 poll_arm_w_sock(w, h, t, SEV_READ, cb, read_arg, c[j], -7);
 
-                ret = tcp_write(c[j], buf, payload_len);
+                ret = tcp_write(c[j], buf, payload_len, NULL, NULL, NULL);
 
                 if (ret != payload_len) {
                         log_err("tcp_write() failed, ret = %ld", ret);

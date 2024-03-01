@@ -1,16 +1,15 @@
+
+# Consider dependencies only in project.
+set(CMAKE_DEPENDS_IN_PROJECT_ONLY OFF)
+
 # The set of languages for which implicit dependencies are needed:
 set(CMAKE_DEPENDS_LANGUAGES
-  "CXX"
   )
-# The set of files for implicit dependencies of each language:
-set(CMAKE_DEPENDS_CHECK_CXX
-  "/nethome/mvemmou3/caladan_prashant/caladan/deps/pcm/src/client/client.cpp" "/nethome/mvemmou3/caladan_prashant/caladan/deps/pcm/build/src/CMakeFiles/client.dir/client/client.cpp.o"
-  "/nethome/mvemmou3/caladan_prashant/caladan/deps/pcm/src/client/main.cpp" "/nethome/mvemmou3/caladan_prashant/caladan/deps/pcm/build/src/CMakeFiles/client.dir/client/main.cpp.o"
-  )
-set(CMAKE_CXX_COMPILER_ID "GNU")
 
-# The include file search paths:
-set(CMAKE_CXX_TARGET_INCLUDE_PATH
+# The set of dependency files which are needed:
+set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/nethome/mvemmou3/caladan_sender_zsim/caladan/deps/pcm/src/client/client.cpp" "src/CMakeFiles/client.dir/client/client.cpp.o" "gcc" "src/CMakeFiles/client.dir/client/client.cpp.o.d"
+  "/nethome/mvemmou3/caladan_sender_zsim/caladan/deps/pcm/src/client/main.cpp" "src/CMakeFiles/client.dir/client/main.cpp.o" "gcc" "src/CMakeFiles/client.dir/client/main.cpp.o.d"
   )
 
 # Targets to which this target links.

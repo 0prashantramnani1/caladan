@@ -1,7 +1,8 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/pcm-lspci.dir/pcm-lspci.cpp.o"
-  "../bin/pcm-lspci.pdb"
   "../bin/pcm-lspci"
+  "../bin/pcm-lspci.pdb"
+  "CMakeFiles/pcm-lspci.dir/pcm-lspci.cpp.o"
+  "CMakeFiles/pcm-lspci.dir/pcm-lspci.cpp.o.d"
 )
 
 # Per-language clean rules from dependency scanning.
