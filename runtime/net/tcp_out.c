@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include <base/stddef.h>
+#include <base/mem.h>
 #include <net/ip.h>
 #include <net/tcp.h>
 #include <net/chksum.h>
@@ -290,7 +291,10 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 	m = net_tx_alloc_mbuf();
     if (unlikely(!m))
         return -ENOBUFS;
-    prefetch(m);
+
+    //prefetch(m->data);
+    int p_len = 1460;
+    prefetch_len(m->data, p_len);
 
 	const char *pos = buf;
 	const char *end = pos + len;
@@ -321,7 +325,8 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 					ret = -ENOBUFS;
 					break;
 			}
-            prefetch(m_new);
+            //prefetch(m_new->data);
+            prefetch_len(m_new->data, p_len);
 
 			seglen = MIN(end - pos, mss);
 			m->seg_seq = c->pcb.snd_nxt;
