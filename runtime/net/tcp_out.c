@@ -289,12 +289,14 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 {
 	struct mbuf *m, *m_new;
 	m = net_tx_alloc_mbuf();
-    if (unlikely(!m))
+    if (unlikely(!m)) {
         return -ENOBUFS;
+        printf("NULL1\n");
+    }
 
     //prefetch(m->data);
     int p_len = 1460;
-    prefetch_len(m->data, p_len);
+    prefetchw_len(m->data, p_len);
 
 	const char *pos = buf;
 	const char *end = pos + len;
@@ -323,10 +325,11 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 				m_new = net_tx_alloc_mbuf();
 				if (unlikely(!m_new)) {
 					ret = -ENOBUFS;
+                    printf("NULL2\n");
 					break;
-			}
-            //prefetch(m_new->data);
-            prefetch_len(m_new->data, p_len);
+			    }
+            //perefetch(m_new->data);
+            prefetchw_len(m_new->data, p_len);
 
 			seglen = MIN(end - pos, mss);
 			m->seg_seq = c->pcb.snd_nxt;
@@ -383,6 +386,10 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 		}
         m = m_new;
 	} while (pos < end);
+
+    if(m_new) {
+        net_tx_release_mbuf(m_new);
+    }
 
 	/* if we sent anything return the length we sent instead of an error */
 	if (pos - (const char *)buf > 0)

@@ -55,14 +55,40 @@ extern int mem_lookup_page_phys_addrs(void *addr, size_t len, size_t pgsize,
 				      physaddr_t *maddrs);
 
 
-static inline void prefetch_len(uint64_t addr, size_t size){
+static inline void prefetch0_len(uint64_t addr, size_t size){
     uint64_t lsize=0;
     if(size % 64)
         lsize = 1;
     lsize += size/64;
     
     while(lsize){
-        prefetch(addr);
+        prefetch0(addr);
+        lsize--;
+        addr += 64;
+    }
+}
+
+static inline void prefetch1_len(uint64_t addr, size_t size){
+    uint64_t lsize=0;
+    if(size % 64)
+        lsize = 1;
+    lsize += size/64;
+    
+    while(lsize){
+        prefetch1(addr);
+        lsize--;
+        addr += 64;
+    }
+}
+
+static inline void prefetchw_len(uint64_t addr, size_t size){
+    uint64_t lsize=0;
+    if(size % 64)
+        lsize = 1;
+    lsize += size/64;
+    
+    while(lsize){
+        prefetchw(addr);
         lsize--;
         addr += 64;
     }

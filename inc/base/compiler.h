@@ -16,6 +16,7 @@
 #define prefetch1(x) __builtin_prefetch((x), 0, 2)
 #define prefetch2(x) __builtin_prefetch((x), 0, 1)
 #define prefetchnta(x) __builtin_prefetch((x), 0, 0)
+#define prefetchw(x) __builtin_prefetch((x), 1, 0)
 #define prefetch(x) prefetch0(x)
 
 /* variable attributes */
