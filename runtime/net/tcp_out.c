@@ -291,12 +291,16 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 	m = net_tx_alloc_mbuf();
     if (unlikely(!m)) {
         return -ENOBUFS;
-        printf("NULL1\n");
     }
 
     //prefetch(m->data);
     int p_len = 1460;
-    prefetchw_len(m->data, p_len);
+    prefetch0_len(m->data, p_len);
+
+    int prefetch_offset = 0;
+    prefetch0_len(buf+prefetch_offset, p_len);
+    prefetch_offset += p_len;
+
 
 	const char *pos = buf;
 	const char *end = pos + len;
@@ -313,6 +317,7 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 
 	/* the main TCP segmenter loop */
 	do {
+
 		/* allocate a buffer and copy payload data */
 		if (c->tx_pending) {
 			m = c->tx_pending;
@@ -325,12 +330,13 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 				m_new = net_tx_alloc_mbuf();
 				if (unlikely(!m_new)) {
 					ret = -ENOBUFS;
-                    printf("NULL2\n");
 					break;
 			    }
             //perefetch(m_new->data);
-            prefetchw_len(m_new->data, p_len);
-
+            prefetch0_len(m_new->data, p_len);
+            prefetch0_len(buf + prefetch_offset, p_len);
+            prefetch_offset += p_len;
+            
 			seglen = MIN(end - pos, mss);
 			m->seg_seq = c->pcb.snd_nxt;
 			m->seg_end = c->pcb.snd_nxt + seglen;
@@ -341,7 +347,7 @@ ssize_t tcp_tx_send(tcpconn_t *c, const void *buf, size_t len, bool push, bool c
 		//__asm__ __volatile__("xchg %%rdx, %%rdx;"::);
 		//memcpy(mbuf_put(m, seglen), pos, seglen);
 		memcpy_user(mbuf_put(m, seglen), pos, seglen);
-		//__asm__ __volatile__("xchg %%rdx, %%rdx;"::);
+        //__asm__ __volatile__("xchg %%rdx, %%rdx;"::);
 
 		store_release(&c->pcb.snd_nxt, c->pcb.snd_nxt + seglen);
 		pos += seglen;
