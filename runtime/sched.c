@@ -213,6 +213,7 @@ static uint32_t drain_threads(struct kthread *k, struct list_head *l, uint32_t n
 
 	rq_head = load_acquire(&k->rq_head);
 	rq_tail = k->rq_tail;
+	bool softirq_stolen = false;
 
 	for (i = 0; i < nr; i++) {
 		if (likely(wraps_lt(rq_tail, rq_head))) {
@@ -222,10 +223,19 @@ static uint32_t drain_threads(struct kthread *k, struct list_head *l, uint32_t n
 			if (!th)
 				break;
 		}
+		// if(th == k->directpath_softirq) {
+		// 	softirq_stolen = true;
+		// 	continue;
+		// }
 		list_add_tail(l, &th->link);
 	}
 
 	if (update_tail) {
+		// if(softirq_stolen) {
+		// 	i--;
+		// 	k->rq[(--rq_tail) % RUNTIME_RQ_SIZE] = k->directpath_softirq;
+		// }
+
 		k->rq_tail = rq_tail;
 		ACCESS_ONCE(k->q_ptrs->rq_tail) += i;
 	}
@@ -248,6 +258,9 @@ static void merge_runqueues(struct kthread *l, uint32_t lsize, struct kthread *r
 	rsize = drain_threads(r, &r_ths, rsize, true /* update_tail */);
 	update_oldest_tsc(r);
 	spin_unlock(&r->lock);
+
+	// if(rsize == 0)
+		// return false;
 
 	list_head_init(&l_ths);
 	lsize = drain_threads(l, &l_ths, lsize, false /* update_tail */);
@@ -277,6 +290,7 @@ static void merge_runqueues(struct kthread *l, uint32_t lsize, struct kthread *r
 
 	ACCESS_ONCE(l->q_ptrs->rq_head) += rsize;
 	update_oldest_tsc(l);
+	// return true;
 }
 
 static bool steal_work(struct kthread *l, struct kthread *r)
@@ -309,6 +323,7 @@ static bool steal_work(struct kthread *l, struct kthread *r)
 	if (lsize < rsize)
 		num_to_steal = MIN(div_up(rsize - lsize, 2), RUNTIME_RQ_SIZE);
 	if (num_to_steal) {
+		// if(merge_runqueues(l, lsize, r, num_to_steal))
 		merge_runqueues(l, lsize, r, num_to_steal);
 		return true;
 	}

@@ -19,7 +19,7 @@
 /* port 40 is permanently reserved, so should be fine for now */
 #define STAT_PORT	40
 
-#define BUFSIZE 4096
+#define BUFSIZE 16384
 
 uint64_t stats[STAT_NR] = {0};
 
@@ -111,9 +111,8 @@ void print_stats(void)
        buf[done] = 0;
 
        fprintf(stderr, "Stats:\n%s", buf);
+       fflush(stderr);
 }
-
-
 /* must correspond exactly to STAT_* enum definitions in defs.h */
 BUILD_ASSERT(ARRAY_SIZE(stat_names) == STAT_NR);
 
