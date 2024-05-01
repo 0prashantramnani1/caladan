@@ -288,8 +288,8 @@ static void iokernel_softirq(void *arg)
 {
 	struct kthread *k = arg;
 
-	softirq_1 = fopen("dumbshit/irq2.txt", "w");
-	softirq_2 = fopen("dumbshit/irq1.txt", "w");
+	softirq_1 = fopen("timelogs/irq2.txt", "w");
+	softirq_2 = fopen("timelogs/irq1.txt", "w");
 
 	while (true) {
 		iokernel_softirq_poll(k);

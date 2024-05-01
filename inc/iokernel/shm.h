@@ -46,10 +46,7 @@ ptr_to_shmptr(struct shm_region *r, void *ptr, size_t len)
 {
 	assert((uintptr_t)r->base <= (uintptr_t)ptr);
 	assert((uintptr_t)ptr + len <= (uintptr_t)r->base + r->len);
-	// printf("shmptr total len: %ld\n", r->len);
-	// printf("shmptr base ptr: %ld\n", (uintptr_t)r->base);
-	// printf("required base ptr: %ld\n", (uintptr_t)ptr);
-	// printf("required len: %ld\n", len);
+	
 	return (uintptr_t)ptr - (uintptr_t)r->base;
 }
 

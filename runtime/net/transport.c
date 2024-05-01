@@ -15,8 +15,7 @@
 
 /* ephemeral port definitions (IANA suggested range) */
 #define MIN_EPHEMERAL		49152
-// #define MAX_EPHEMERAL		65535
-#define MAX_EPHEMERAL		100005
+#define MAX_EPHEMERAL		65535
 
 /* a seed value for transport handler table hashing calculations */
 static uint32_t trans_seed;
@@ -223,12 +222,9 @@ void net_rx_trans(struct mbuf *m)
 		if (iphdr->proto == IPPROTO_TCP)
 			tcp_rx_closed(m);
 		mbuf_free(m);
-		//printf("net_rx_trans: returning without call tcp_rxx_conn\n");
 		return;
 	}
-	//printf("net_rx_trans: returning with call to tcp_rxx_conn\n");
 	e->ops->recv(e, m);
-	//printf("net_rx_trans: tcp_rxx_conn done\n");
 	rcu_read_unlock();
 }
 

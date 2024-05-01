@@ -354,8 +354,6 @@ static __noinline bool do_watchdog(struct kthread *l)
 /* the main scheduler routine, decides what to run next */
 static __noreturn __noinline void schedule(void)
 {
-	// if(myk()->kthread_idx == 1)
-		// printf("ID OF SECOND KTHREAD: %d - pthread_id: %d\n", myk()->kthread_idx, syscall(__NR_gettid));
 	struct kthread *r = NULL, *l = myk();
 
 
@@ -988,7 +986,7 @@ static __always_inline thread_t *__thread_create(void)
 
 	#ifdef SC_LOG
 		char buffer [1000];
-		snprintf ( buffer, 1000, "dumbshit/uthread_%d", num_uthreads++);
+		snprintf ( buffer, 1000, "timelogs/uthread_%d", num_uthreads++);
 		// printf("SPAWNING UTHREAD - %d with name - %s\n", num_uthreads, buffer);
 		th->fptr = fopen(buffer, "w");
 		if(th->fptr == NULL) {
@@ -1201,7 +1199,7 @@ void thread_exit(void)
  */
 static __noreturn void schedule_start(void)
 {
-	idle_schedule = fopen("dumbshit/idle_schedule.txt", "w");
+	idle_schedule = fopen("timelogs/idle_schedule.txt", "w");
 	next_log_time = microtime();
 	schedule_time = 0;
 	schedule_again_time = 0;

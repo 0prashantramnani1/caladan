@@ -84,7 +84,6 @@ static void tcp_rx_append_text(tcpconn_t *c, struct mbuf *m)
 	nxt_wnd = (uint64_t)m->seg_end;
 	nxt_wnd |= ((uint64_t)(c->pcb.rcv_wnd - (m->seg_end - m->seg_seq)) << 32);
 	store_release(&c->pcb.rcv_nxt_wnd, nxt_wnd);
-	// printf("TCP RX append text: adding to c->rxq \n");
 	list_add_tail(&c->rxq, &m->link);
 
 	if (c->non_blocking) {
@@ -278,7 +277,6 @@ void tcp_rx_conn(struct trans_entry *e, struct mbuf *m)
 	// 		if (pt->event_type & SEV_READ) poll_trigger(pt->waiter, pt);
 	// 	}
 	// }
-	//printf("tcp_rx_conn: done with poll loop\n");
 	/* handle delayed acks */
 	if (++c->acks_delayed_cnt >= 2) {
 		c->ack_delayed = false;

@@ -135,7 +135,6 @@ static void *pthread_entry(void *data)
 	BUG_ON(ret);
 
 	pthread_barrier_wait(&init_barrier);
-	printf("ID OF SECOND KTHREAD: %d - pthread_id: %d\n", myk()->kthread_idx, syscall(__NR_gettid));
 	sched_start();
 
 	/* never reached unless things are broken */

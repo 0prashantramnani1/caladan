@@ -90,9 +90,6 @@ void poll_arm_w_sock(poll_waiter_t *w, struct list_head *sock_event_head,
 	t->cb_arg = cb_arg;
 	t->sock = sock;
 	t->data = data;
-	if(sock_event_head == NULL) {
-		//printf("poll_wait: Null check 1\n");
-	}
 
 	list_add(sock_event_head, &t->sock_link);
 
@@ -114,9 +111,6 @@ void poll_arm_w_queue(poll_waiter_t *w, struct list_head *sock_event_head,
 	t->cb_arg = cb_arg;
 	t->queue = queue;
 	t->data = data;
-	if(sock_event_head == NULL) {
-		//printf("poll_wait: Null check 1\n");
-	}
 
 	list_add(sock_event_head, &t->sock_link);
 
@@ -207,16 +201,13 @@ void poll_disarm(poll_trigger_t *t)
  */
 unsigned long poll_wait(poll_waiter_t *w)
 {
-	//printf("poll wait: \n");
 	thread_t *th = thread_self();
 	poll_trigger_t *t;
 
 	while (true) {
-		//printf("poll_wait: in while loop \n");
 		spin_lock_np(&w->lock);
 		t = list_pop(&w->triggered, poll_trigger_t, link);
 		if (t) {
-			//printf("poll_wait: trigger triggered\n");
 			spin_unlock_np(&w->lock);
 			return t->data;
 		}
@@ -291,7 +282,6 @@ int poll_cb_once(poll_waiter_t *w)
 		if(t->cb != NULL)
 			t->cb(t->cb_arg);
 		tcparg_t *arg = (tcparg_t *)t->cb_arg;
-		// printf("poll_cb_once: called tcp_accep_poll: raddr_port:%d\n", tcp_get_raddr_port(*arg->c));
 		processed_events = true;
 
 		if(t->queue != NULL) {

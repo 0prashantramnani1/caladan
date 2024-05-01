@@ -51,7 +51,6 @@ bool softirq_pending(struct kthread *k, uint64_t now_tsc)
  */
 bool softirq_run_locked(struct kthread *k)
 {
-	// printf("IN SOFTIRQ LOCKED\n");
 	uint64_t now_tsc = rdtsc();
 	bool work_done = false;
 

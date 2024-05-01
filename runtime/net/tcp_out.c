@@ -151,7 +151,6 @@ int tcp_tx_ack(tcpconn_t *c)
 	m->seg_seq = load_acquire(&c->pcb.snd_nxt);
 	tcp_push_tcphdr(m, c, TCP_ACK, 5, 0);
 
-	// printf("Sending ACK for mbuf size: %d\n", sizeof(m));
 	/* transmit packet */
 	tcp_debug_egress_pkt(c, m);
 	ret = net_tx_ip(m, IPPROTO_TCP, c->e.raddr.ip);
@@ -365,7 +364,6 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 	 * in such corner cases.
 	 */
 	if (unlikely(atomic_read(&m->ref) != 1)) {
-//		printf("Retransmitting packet lost on queue\n");
 		struct mbuf *newm = net_tx_alloc_mbuf();
 		if (unlikely(!newm))
 			return -ENOMEM;
@@ -378,7 +376,6 @@ static int tcp_tx_retransmit_one(tcpconn_t *c, struct mbuf *m)
 		newm->txflags = OLFLAG_TCP_CHKSUM;
 		m = newm;
 	} else {
-//		printf("Retransmitting packet stuck in lRPC queue\n");
 		/* strip headers and reset ref count */
 		mbuf_reset(m, m->transport_off + sizeof(struct tcp_hdr));
 		atomic_write(&m->ref, 2);
